@@ -4,6 +4,11 @@
 
 Echo Phase 1 is a minimal, standard-library Python kernel.
 
+The `0.1-amendment/character_plan` branch also records the persistent character
+architecture and adds its provider-independent base vocabulary. These types,
+Bit configuration, and prompts are scaffolding for the amended roadmap; they
+are deliberately not wired into the completed Phase 1 runtime.
+
 The public package exports:
 
 - `Signal`
@@ -67,10 +72,13 @@ them against external systems.
 - Phase 1E (`0.1.5`): public-API integration coverage.
 - Phase 1E: typed battery signal end-to-end scenario.
 - Phase 1E: one Signal dispatching independently to multiple Entities.
+- Character amendment: ownership invariants, vertical phase plan, base value
+  types, Bit seed configuration, and provider-boundary prompts.
 
 ## In progress
 
-Nothing. Phase 1 is complete and work stops here as requested.
+Nothing. The character amendment is documented and scaffolded; runtime
+integration remains deferred to the amended Phase 2 and later roadmap.
 
 ## Known issues
 
@@ -79,6 +87,10 @@ Nothing. Phase 1 is complete and work stops here as requested.
 - Actions have no Medulla executor or transport.
 - There is no long-running process host, CLI, HTTP API, or Console.
 - There are no provider, model, memory, ROS, or robotics integrations.
+- Character base types are not yet composed into `echo.core.Entity` or loaded
+  from the Bit YAML configuration.
+- There is no character persistence, context builder, consolidation service,
+  behavior policy, or character mutation audit store yet.
 - Scheduler `periodic` is a priority class, not a recurring timer facility.
 - Signal payloads must already contain JSON-compatible values for `to_json`.
 
@@ -99,12 +111,17 @@ These are roadmap deferrals, not missing Phase 1 acceptance criteria.
 - Handler exceptions mark Tasks failed and propagate to the emitter.
 - Actions are recorded intent until Medulla exists.
 - Runtime history is observable but not presented as durable logging.
-- No future-phase packages or empty interfaces are scaffolded.
+- Requested character base modules are concrete, tested value types rather than
+  empty interfaces; all other future packages remain unscaffolded.
+- Echo owns Entity continuity; providers return untrusted cognitive proposals.
+- Identity is independent of inference provider and embodiment.
+- Bit-specific seeds remain outside the generic framework package.
 
 ## Next task
 
-Stop. If explicitly authorized later, begin Phase 2 observability from the
-roadmap without folding it into the Phase 1 kernel.
+Begin amended Phase 2 only when explicitly authorized: add observability while
+composing persistent identity, traits, and self-model into the Entity without
+folding provider concerns into the kernel.
 
 ## Important files
 
@@ -125,6 +142,11 @@ roadmap without folding it into the Phase 1 kernel.
 - `tests/test_scheduler_runtime.py` — Scheduler and Runtime unit tests.
 - `tests/test_integration.py` — public-API integration tests.
 - `docs/ARCHITECTURE.md` — implemented architecture boundary.
+- `docs/CHARACTER_ARCHITECTURE.md` — persistent character design and phased
+  acceptance criteria.
 - `docs/ROADMAP.md` — phase status and deferrals.
 - `docs/DECISIONS.md` — accepted architecture decisions.
 - `docs/CURRENT_STATE.md` — concise handoff record.
+- `src/echo/entity/` — provider-independent character base value types.
+- `entities/bit/` — Bit reference configuration and prompts.
+- `prompts/` — generic model-boundary contracts.

@@ -1,7 +1,9 @@
 # Roadmap
 
-The authoritative roadmap is `Echo_Plan.md`. Work is delivered incrementally;
-future phases are not scaffolded before they are needed.
+The authoritative roadmap is `Echo_Plan.md`, with character details in
+`CHARACTER_ARCHITECTURE.md`. Work is delivered incrementally. The requested
+character amendment establishes only base types, configuration, and prompts;
+runtime integration still follows the phases below.
 
 ## Phase 0 — repository cleanup and architecture docs
 
@@ -25,3 +27,19 @@ Phase 1 stops here. Later roadmap work requires separate authorization.
 Observability infrastructure, runtime APIs, Console, model providers,
 configuration, persistence, replay, Medulla transports, edge ML, robotics, and
 advanced task behavior remain deferred to the phases defined in the plan.
+
+## Persistent character vertical track
+
+- Phase 2: persistent identity, trait snapshots, self-model, and audit terms.
+- Phase 3: internal state, drives, Signal influence, and attention candidates.
+- Phase 4: relationship models and per-person social context.
+- Phase 5: distinct working, episodic, semantic, preference, and relationship
+  memories.
+- Phase 6: retention scoring, consolidation, and learned preferences.
+- Phase 7: compact, provider-neutral Character Context Builder and retrieval.
+- Phase 8: proposed intentions, behavior arbitration, and autonomous curiosity.
+- Phase 9: evidence-based, bounded, auditable character evolution.
+- Phase 10 and later: embodiment signals constrain state, goals, and behavior.
+
+Provider and embodiment continuity tests are acceptance criteria throughout,
+not a final integration exercise.

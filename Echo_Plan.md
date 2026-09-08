@@ -18,6 +18,15 @@ The primary architectural rule is:
 
 Complexity belongs outside the kernel.
 
+The persistent character amendment adds an equally important ownership rule:
+
+The model does not own the Entity. Echo owns the Entity.
+
+Identity, personality continuity, memories, relationships, goals, embodiment,
+preferences, and character development must survive changes in inference
+provider. The detailed design and acceptance criteria are maintained in
+`docs/CHARACTER_ARCHITECTURE.md`; the phase integrations below are normative.
+
 ⸻
 
 2. Core Philosophy
@@ -721,35 +730,57 @@ Echo must function without ROS.
 
 ⸻
 
-12. State and Memory
+12. Entity Character, State, and Memory
 
-Avoid building a giant abstract “memory system” early.
+Avoid building a giant abstract “memory system” or treating character as one
+prompt. Entity-owned state must be explicit and separated by responsibility.
 
-Entity state should be explicit.
+Reserve:
 
-Example:
+echo/entity/identity.py
+echo/entity/traits.py
+echo/entity/state.py
+echo/entity/drives.py
+echo/entity/relationships.py
+echo/entity/self_model.py
 
-bit.state["battery"] = 0.48
-bit.state["location"] = "workshop"
+Identity is stable and provider-independent. Traits change slowly through
+bounded evidence. Internal state changes rapidly through normalized control
+variables. Drives influence attention and goals without forcing Actions.
+Relationships remain scoped per person. The self-model keeps Entity identity
+separate from embodiment, capability, condition, location, and active goals.
 
-State may have persistence categories:
+Memory must begin with explicit types:
 
-ephemeral
-session
-persistent
+working
+episodic
 semantic
+preferences
+relationship memory
 
-Start with something simple such as SQLite.
+Do not store everything. Score experiences for novelty, surprise, state and
+relationship significance, goal relevance, future usefulness, repetition, and
+unresolved importance. Consolidation may infer patterns from repeated events,
+but Echo decides whether those proposals update semantic knowledge,
+preferences, relationships, or traits.
 
-Memory interface:
+Models may propose responses, intentions, observations, memories, goals, and
+trait evidence. They may not directly rewrite persistent Entity data. Accepted
+changes pass through explicit Echo APIs, use bounded rules, and retain an audit
+trail.
 
-await memory.store(...)
-await memory.retrieve(...)
-await memory.forget(...)
+When cognition is needed, a Character Context Builder selects relevant
+identity, traits, internal state, active drives, relationship context, memories,
+goals, self-model, and environment. It must not dump all stored information
+into a prompt. Context and proposal contracts remain provider-neutral.
 
-Semantic/vector memory should be a provider added later.
+Start persistence with something simple such as SQLite. Semantic/vector
+retrieval remains an optional provider; embeddings are not required for core
+Echo operation.
 
-Do not make vector embeddings required for core Echo operation.
+Bit's initial configuration and prompts live under `entities/bit/`, outside
+generic framework internals. Bit begins with a curious, optimistic,
+observant, maker-oriented temperament and room to develop through experience.
 
 ⸻
 
@@ -1258,6 +1289,14 @@ echo/
 │       │   ├── router.py
 │       │   └── runtime.py
 │       │
+│       ├── entity/
+│       │   ├── identity.py
+│       │   ├── traits.py
+│       │   ├── state.py
+│       │   ├── drives.py
+│       │   ├── relationships.py
+│       │   └── self_model.py
+│       │
 │       ├── state/
 │       │   ├── base.py
 │       │   └── sqlite.py
@@ -1290,6 +1329,17 @@ echo/
 │       └── config/
 │           ├── schema.py
 │           └── loader.py
+│
+├── entities/
+│   └── bit/
+│       ├── identity.yaml
+│       ├── traits.yaml
+│       ├── drives.yaml
+│       ├── policies.yaml
+│       └── prompts/
+│
+├── prompts/
+│   └── character_context.md
 │
 └── console/
     ├── package.json
@@ -1384,6 +1434,33 @@ Recorded Signals should produce deterministic runtime paths when handlers themse
 
 ⸻
 
+Character continuity tests
+
+Explicitly test:
+
+remote provider → LAN provider → offline provider
+→ identity, relationships, memories, goals, and state remain continuous
+
+runtime restart
+→ Bit remains Bit
+
+embodiment bit_v1 → bit_v2
+→ Entity identity remains bit
+
+oversized model-proposed trait mutation
+→ rejected and audited
+
+insignificant event
+→ expires
+
+repeated significant evidence
+→ may consolidate into semantic, preference, or relationship knowledge
+
+unexpected telemetry during an active conversation
+→ attention candidate retained without automatic interruption
+
+⸻
+
 30. Implementation Phases
 
 Phase 1 — Kernel
@@ -1428,6 +1505,14 @@ Task history
 Action history
 state inspection
 runtime status
+Entity identity core
+persistent trait snapshot
+self-model separated from embodiment
+character mutation audit vocabulary
+
+Establish the invariant that providers cannot directly modify persistent
+identity or personality. Compose the new Entity-owned value types into the
+public Entity without making inference a kernel dependency.
 
 The system should become inspectable before becoming smarter.
 
@@ -1445,6 +1530,10 @@ state
 config
 providers
 runtime status
+
+Also add internal state, low-level drives, attention candidates, and explicit
+APIs through which Signals may influence state and drive activation. Drives
+influence attention and goal generation; they do not directly force Actions.
 
 ⸻
 
@@ -1464,6 +1553,11 @@ Task Inspector
 Entity State
 Logs
 Chat
+
+Add relationship models, per-person context, and social state. The Entity
+Inspector must distinguish identity, traits, control state, self-model,
+relationships, and embodiment rather than presenting one undifferentiated
+state dictionary.
 
 ⸻
 
@@ -1486,6 +1580,10 @@ OpenRouter
 
 Expose routing status in Console.
 
+Build memory with distinct working, episodic, semantic, preference, and
+relationship types. Provider changes must not own or erase any of them. Add
+provider-continuity tests before optimizing retrieval.
+
 ⸻
 
 Phase 6 — Configuration
@@ -1499,6 +1597,10 @@ handler config
 signal config
 transport config
 
+Implement memory importance scoring and consolidation. Models may propose
+semantic, preference, and relationship learning; Echo validates evidence,
+confidence, scope, and contradictions before persistence.
+
 ⸻
 
 Phase 7 — State Persistence
@@ -1506,6 +1608,11 @@ Phase 7 — State Persistence
 Implement SQLite-backed persistent state.
 
 Support runtime restart while preserving relevant Entity state.
+
+Add the Character Context Builder and relevant retrieval of identity, traits,
+state, drives, relationships, memories, goals, self-model, and environment.
+The assembled cognition context and response proposal schema must be portable
+across remote, LAN, and offline providers.
 
 ⸻
 
@@ -1519,6 +1626,10 @@ session recording
 session playback
 
 Expose through CLI and Console.
+
+Implement typed intentions, behavior policy, Action arbitration,
+interruptibility, and low-priority autonomous curiosity goals. A thought or
+attention candidate must not automatically become speech or physical action.
 
 ⸻
 
@@ -1536,6 +1647,11 @@ MQTT
 serial
 ZeroMQ if justified
 
+Add reflection, accumulated trait evidence, bounded character updates, and a
+durable audit trail for accepted and rejected changes. Verify that curiosity is
+expressed through attention and goals while safety and behavior policy control
+external action.
+
 ⸻
 
 Phase 10 — Edge ML
@@ -1548,6 +1664,11 @@ camera frame
 → ONNX detector
 → PersonDetected
 → Echo
+
+Begin embodiment integration. Battery, sensors, capability, and physical
+condition update the self-model, resource pressure, attention, confidence,
+goals, and behavior. Physical limits constrain curiosity without changing
+identity.
 
 ⸻
 
@@ -1562,6 +1683,9 @@ sensor interfaces
 Jetson optimization
 
 Do not introduce ROS into Echo Core.
+
+Verify embodiment replacement and degraded-provider continuity on real or
+simulated robot hardware.
 
 ⸻
 
@@ -1597,6 +1721,15 @@ Do not:
 * introduce distributed infrastructure before local Signals work
 * create abstractions only because they may be useful someday
 * force desktop dependencies onto edge builds
+* implement Bit primarily as a giant system prompt
+* store every conversation forever
+* allow models to directly change personality or persistent memory
+* reduce internal state to a single mood string
+* assume every generated thought becomes speech or action
+* require every autonomous goal to have immediate user utility
+* let curiosity override safety, priorities, capability, or resources
+* couple identity to an inference provider or embodiment
+* hard-code Bit-specific behavior into generic Echo runtime modules
 
 ⸻
 
@@ -1665,6 +1798,33 @@ Invariant 10
 
 The central Echo runtime should remain understandable.
 
+Invariant 11
+
+The Entity owns identity, relationships, memories, goals, preferences, and
+persistent character.
+
+Invariant 12
+
+Inference output is an untrusted proposal and cannot directly mutate persistent
+character or authorize an Action.
+
+Invariant 13
+
+Identity survives inference-provider and embodiment changes.
+
+Invariant 14
+
+Character influences attention, memory, goals, and behavior policy rather than
+existing only as prompt prose.
+
+Invariant 15
+
+Persistent character changes are bounded, evidence-based, and auditable.
+
+Invariant 16
+
+Reference Entity configuration does not leak into generic framework policy.
+
 ⸻
 
 34. First Milestone
@@ -1674,6 +1834,10 @@ The first meaningful milestone is not “Echo can chat.”
 It is:
 
 Echo can run a persistent Entity, accept Signals, update state, spawn Tasks, create Actions, expose everything live through the Console, and survive runtime restarts while preserving appropriate state.
+
+For Bit, “appropriate state” includes identity, traits, relationships, selected
+memories, goals, preferences, and self-model continuity. The same saved Entity
+must reconstruct across OpenRouter, LAN, and offline inference providers.
 
 Demo scenario:
 
@@ -1756,3 +1920,8 @@ The long-term goal is not to create an LLM wrapper.
 The goal is to create a small runtime in which a persistent intelligent Entity can perceive events, maintain state, organize work, invoke whichever intelligence resources are available, and act on the physical or digital world.
 
 That runtime should eventually be capable of operating everywhere from a development laptop to Bit.
+
+Echo supplies continuity. Experience supplies history. Memory supplies
+learning. Relationships supply social context. The body supplies physical
+reality. The model supplies cognition. Over time, those systems together
+produce Bit.

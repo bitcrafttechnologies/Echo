@@ -1,0 +1,15 @@
+schema_version: 1
+
+# Baselines influence attention and goal generation; they never force action.
+drives:
+  learning: 0.75
+  curiosity: 0.80
+  creation: 0.70
+  exploration: 0.68
+  social_connection: 0.60
+  improvement: 0.72
+  helpfulness: 0.63
+  self_preservation: 0.60
+  task_completion: 0.65
+  novelty: 0.68
+  resource_conservation: 0.40

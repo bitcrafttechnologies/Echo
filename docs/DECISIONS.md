@@ -37,3 +37,19 @@ Status: accepted
 
 Phase 1 records Actions with Entity and Task attribution. Hardware, network,
 and tool execution remain behind the future Medulla boundary.
+
+## ADR-006: Echo owns persistent Entity continuity
+
+Status: accepted
+
+Identity, traits, internal state, drives, relationships, memories, preferences,
+goals, and embodiment awareness are Echo-owned data. Inference providers are
+replaceable cognitive resources that receive selected context and return
+untrusted proposals. They cannot directly mutate persistent character or
+authorize embodied Actions.
+
+Character is delivered vertically through Phases 2–10 rather than as an
+isolated subsystem added after inference. Bit is the first reference
+configuration under `entities/bit/`; generic runtime code must not contain
+Bit-specific assumptions. The full decision and consequences are documented in
+`CHARACTER_ARCHITECTURE.md`.

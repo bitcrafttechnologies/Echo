@@ -1,6 +1,7 @@
 # Architecture
 
-`Echo_Plan.md` is the architectural source of truth. This document records the
+`Echo_Plan.md` is the architectural source of truth. The persistent character
+amendment is detailed in `CHARACTER_ARCHITECTURE.md`. This document records the
 implemented boundary so that code and roadmap can be compared quickly.
 
 ## Kernel model
@@ -41,6 +42,12 @@ the outside world belongs to the later Medulla boundary.
 The implementation favors dataclasses, `asyncio`, explicit method calls, and
 composition. Decorators are only registration helpers.
 
+The amendment adds provider-independent character value types under
+`echo.entity`, but does not yet attach them to `echo.core.Entity`, persist them,
+or route them through inference. Bit's reference configuration is outside the
+generic package under `entities/bit/`. This preserves one public Entity actor
+while reserving explicit ownership boundaries for Phase 2 and later.
+
 Handler matching accepts either a Signal type string or a Signal subclass.
 Class matching uses normal Python `isinstance` behavior, so a base Signal
 handler can observe every Signal while a typed handler remains specific.
@@ -51,3 +58,8 @@ Core primitives do not depend on optional infrastructure. `Entity` owns a
 handler registry and can be attached to a `Runtime`; `Runtime` owns a
 `Scheduler` and registered entities. Optional systems added later must depend
 on this kernel rather than redefine it.
+
+Character state follows the same direction: identity, traits, self-model,
+internal state, drives, relationships, and memory belong to Echo. Providers
+receive compact context and return untrusted proposals. Behavior policy, not a
+model, authorizes Actions. Identity remains independent of provider and body.
