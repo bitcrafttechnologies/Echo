@@ -114,12 +114,36 @@ use or extend the small text parser. Text parsing is limited to `shlex`
 tokenization and JSON-object decoding. Command names never resolve dynamically
 to Python callables, and there is no `eval`, `exec`, import, or shell path.
 
+Phase 3C publishes the existing structured Runtime observations to a small
+in-process broker. Each observation is assigned one monotonic sequence number,
+classified into a stable event family, detached, and offered with
+`put_nowait()` to each matching subscriber's private bounded queue. Subscribers
+choose drop-oldest or drop-newest behavior and can inspect their drop count.
+The Runtime never awaits consumer work. Consumer failures therefore remain in
+the consumer task, slow consumers are bounded, and a broker-side subscription
+failure is removed without entering Runtime control flow.
+
+```text
+Runtime lifecycle observation
+  -> internal log history and external LogSink
+  -> Runtime event broker
+       -> subscriber A bounded queue
+       -> subscriber B bounded queue
+       -> subscriber C bounded queue
+```
+
+The `logs` subscription category selects every observation; narrower consumers
+can select Signal receipt/routing, Task or Action lifecycle, state changes,
+Runtime changes, or errors. The broker defines no wire format or network
+transport. A later WebSocket adapter may consume subscriptions through
+`RuntimeService` without moving event semantics into the web server.
+
 ## Boundaries
 
-The implemented kernel, service, and command layer contain no LLM, provider
-routing, persistence, web API, FastAPI, Console, ROS, or Medulla transport.
-Actions are structured intent records; execution against the outside world
-belongs to the later Medulla boundary.
+The implemented kernel, service, command, and subscription layers contain no
+LLM, provider routing, persistence, web API, WebSocket, FastAPI, Console, ROS,
+or Medulla transport. Actions are structured intent records; execution against
+the outside world belongs to the later Medulla boundary.
 The Phase 2A `action.executed` observation identifies execution at the Runtime
 intent boundary, not an external side effect.
 

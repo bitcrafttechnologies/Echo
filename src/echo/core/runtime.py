@@ -30,6 +30,11 @@ from echo.core.signal_history import (
 )
 from echo.core.task import Task, TaskStatus
 from echo.core.task_history import TaskHistory, TaskHistoryEntry
+from echo.runtime_events import (
+    RuntimeEventBroker,
+    RuntimeEventSubscription,
+    RuntimeSubscriptionRequest,
+)
 
 
 class Runtime:
@@ -58,6 +63,7 @@ class Runtime:
         self.signals: list[Signal] = []
         self.tasks: list[Task] = []
         self.actions: list[Action] = []
+        self._event_broker = RuntimeEventBroker()
         self._dispatch_lock = asyncio.Lock()
         self._dispatch_owner: asyncio.Task[Any] | None = None
         self._current_entity: Entity | None = None
@@ -102,6 +108,14 @@ class Runtime:
 
     def get_entity(self, entity_id: str) -> Entity | None:
         return self.entities.get(entity_id)
+
+    def subscribe_events(
+        self,
+        request: RuntimeSubscriptionRequest | None = None,
+    ) -> RuntimeEventSubscription:
+        """Create an isolated bounded subscription to future Runtime events."""
+
+        return self._event_broker.subscribe(request)
 
     @property
     def uptime(self) -> float:
@@ -638,6 +652,7 @@ class Runtime:
         if event_type is RuntimeEventType.ERROR:
             self._recent_errors.append(event)
         self._log_events.append(event)
+        self._event_broker.publish(event)
         try:
             self.log_sink.write(event)
         except Exception:

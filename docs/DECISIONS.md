@@ -74,3 +74,14 @@ explicit type branches to `RuntimeService`. A small text parser may create
 those same schemas for CLI use; Console code can construct them directly.
 Parsing is limited to tokenization and JSON data. Command input cannot resolve
 arbitrary functions, import modules, invoke a shell, or execute Python.
+
+## ADR-009: Live events use isolated bounded subscriber queues
+
+Status: accepted
+
+Runtime lifecycle observations are synchronously classified and offered with
+`put_nowait()` to private bounded queues. Subscribers are never awaited by the
+Runtime, cannot share mutable event metadata, and select an explicit
+drop-oldest or drop-newest overflow policy with drop accounting. Consumer or
+subscription failure cannot enter Runtime control flow. The broker remains
+in-process and transport-neutral; WebSockets are deferred to a later adapter.

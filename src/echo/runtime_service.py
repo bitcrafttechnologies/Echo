@@ -16,6 +16,11 @@ from echo.core.signal import Signal
 from echo.core.signal_history import SignalHistoryEntry
 from echo.core.task import TaskStatus
 from echo.core.task_history import TaskHistoryEntry
+from echo.runtime_events import (
+    InvalidSubscriptionError,
+    RuntimeEventSubscription,
+    RuntimeSubscriptionRequest,
+)
 
 
 class RuntimeServiceError(Exception):
@@ -375,6 +380,20 @@ class RuntimeService:
         except ValueError as error:
             raise InvalidRequestError(str(error)) from error
         return LogResult(events=tuple(json_safe(event.to_dict()) for event in events))
+
+    def subscribe_events(
+        self,
+        request: RuntimeSubscriptionRequest | None = None,
+    ) -> RuntimeEventSubscription:
+        """Subscribe to future live activity without exposing Runtime internals."""
+
+        try:
+            return self._runtime.subscribe_events(request)
+        except InvalidSubscriptionError as error:
+            raise InvalidRequestError(
+                error.message,
+                details=error.details,
+            ) from error
 
     def _require_entity(self, entity_id: str) -> Any:
         self._validate_identifier(entity_id, "entity_id")

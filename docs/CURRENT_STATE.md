@@ -2,10 +2,10 @@
 
 ## Current implementation
 
-Echo Phase 3B is a minimal, standard-library Python kernel with stable,
-transport-agnostic runtime service and structured developer-command layers over
-its in-memory observability. It retains the Phase 2 persistent-character slice
-without beginning the later Phase 3 character work.
+Echo Phase 3C is a minimal, standard-library Python kernel with stable,
+transport-agnostic runtime service, structured developer-command, and live
+event-subscription layers over its in-memory observability. It retains the
+Phase 2 persistent-character slice without beginning later Phase 3 work.
 
 The `0.1-amendment/character_plan` branch also records the persistent character
 architecture and adds its provider-independent base vocabulary. Phase 2 now
@@ -33,6 +33,9 @@ The public package exports:
   `RuntimeServiceError` domain-error hierarchy
 - `DeveloperCommandDispatcher`, typed command schemas, `CommandResult`, the
   `DeveloperCommandError` hierarchy, and `parse_developer_command`
+- `RuntimeEventSubscription`, `RuntimeSubscriptionRequest`,
+  `RuntimeSubscriptionEvent`, event categories, backpressure policies, and
+  subscription errors
 
 The working runtime path is:
 
@@ -74,6 +77,17 @@ same schemas for a future CLI. Results and failures have structured `to_dict()`
 representations. The parser uses `shlex` for tokenization and `json.loads` for
 object values. It has no dynamic imports, `eval`, `exec`, shell invocation, or
 arbitrary Python execution path.
+
+`RuntimeService.subscribe_events()` creates an isolated subscription to future
+Runtime activity. Each structured log event is classified as Signal receipt,
+Signal routing, Task lifecycle, Action lifecycle, state change, Runtime change,
+or error. The `logs` category is an all-event selector. Publications receive a
+global sequence number and are copied into a private bounded `asyncio.Queue`
+for each subscriber. Runtime publication uses only `put_nowait`: subscribers
+are never awaited. Queue overflow uses an explicit drop-oldest or drop-newest
+policy and exposes a dropped-event count. A closed, failed, or slow consumer
+cannot stop Runtime execution or affect another subscriber. The mechanism has
+no socket, WebSocket, HTTP, or framework dependency.
 
 `SignalHistory` defaults to 1,000 entries and can be configured through
 `Runtime(signal_history_size=...)`. It stores safe snapshots of each Signal's
@@ -204,10 +218,16 @@ execution remains deferred to Medulla.
 - Phase 3B: structured parse, validation, unknown-command, and execution errors.
 - Phase 3B: valid, malformed, live cancellation, and arbitrary-Python rejection
   tests.
+- Phase 3C (`0.3.3`): transport-neutral live Runtime event subscriptions.
+- Phase 3C: ordered, detached event envelopes and category filtering.
+- Phase 3C: isolated bounded queues with explicit backpressure policy and drop
+  accounting.
+- Phase 3C: ordered consumer, category, slow-subscriber, failed-consumer, and
+  invalid-subscription coverage.
 
 ## In progress
 
-Nothing. Phase 3B is complete and later Phase 3 subphases have not begun.
+Nothing. Phase 3C is complete and later Phase 3 subphases have not begun.
 
 ## Known issues
 
@@ -223,12 +243,12 @@ Nothing. Phase 3B is complete and later Phase 3 subphases have not begun.
 - Scheduler `periodic` is a priority class, not a recurring timer facility.
 - Signal payloads must already contain JSON-compatible values for `to_json`.
 
-These are roadmap deferrals, not missing Phase 2 acceptance criteria.
+These are roadmap deferrals, not missing Phase 3C acceptance criteria.
 
 ## Architecture decisions
 
 - `Echo_Plan.md` remains the architectural source of truth.
-- Python 3.11+ and the standard library are sufficient through Phase 2.
+- Python 3.11+ and the standard library are sufficient through Phase 3C.
 - Dataclasses represent kernel records; no schema framework is required yet.
 - `unittest` verifies the project without downloaded test dependencies.
 - The Entity is the public actor abstraction.
@@ -252,6 +272,8 @@ These are roadmap deferrals, not missing Phase 2 acceptance criteria.
   adapters depend on it instead of reaching into Runtime-owned structures.
 - Developer commands are closed, typed schemas with explicit dispatch. Text is
   only a presentation adapter and cannot select arbitrary callables.
+- Runtime events fan out through isolated bounded queues; publication never
+  awaits subscribers, and overflow behavior is explicit and observable.
 - State writes are denied unless the service is configured with an explicit
   per-Entity key allowlist.
 - Runtime-owned log read history is independent of external sink behavior.
@@ -267,7 +289,7 @@ These are roadmap deferrals, not missing Phase 2 acceptance criteria.
 
 ## Next task
 
-Stop after Phase 3B. Begin the next Phase 3 subphase only when explicitly
+Stop after Phase 3C. Begin the next Phase 3 subphase only when explicitly
 authorized. FastAPI, CLI, providers, persistence, replay, internal character
 state, drives, and attention remain deferred.
 
@@ -288,6 +310,8 @@ state, drives, and attention remain deferred.
   request/result types, and domain errors.
 - `src/echo/developer_commands.py` — typed developer commands, explicit service
   dispatcher, minimal text parser, and command errors.
+- `src/echo/runtime_events.py` — event categories, subscription envelopes,
+  bounded subscriber queues, and non-blocking broker.
 - `src/echo/core/runtime_log.py` — structured events and log sink interface.
 - `src/echo/core/signal_history.py` — bounded Signal snapshots and queries.
 - `src/echo/core/task_history.py` — reference-backed Task lifecycle history.
@@ -308,6 +332,8 @@ state, drives, and attention remain deferred.
   Runtime plus domain-error behavior.
 - `tests/test_developer_commands.py` — Phase 3B command dispatch, grammar,
   validation, cancellation, and arbitrary-execution rejection.
+- `tests/test_runtime_events.py` — Phase 3C ordering, filtering, backpressure,
+  failure isolation, and subscription validation.
 - `docs/ARCHITECTURE.md` — implemented architecture boundary.
 - `docs/CHARACTER_ARCHITECTURE.md` — persistent character design and phased
   acceptance criteria.

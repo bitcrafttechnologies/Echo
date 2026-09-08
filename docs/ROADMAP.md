@@ -60,9 +60,16 @@ Phase 2 stops here. Phase 3 requires separate authorization.
 - Added a minimal `shlex` and JSON text grammar suitable for a future CLI while
   keeping direct command objects suitable for a future Console.
 - Added structured command errors and arbitrary-Python execution rejection.
+- Phase 3C (`0.3.3`): runtime event subscriptions — completed.
+- Added ordered event envelopes for Signal, Task, Action, state, Runtime, log,
+  and error activity.
+- Added transport-neutral per-subscriber bounded queues, category filters,
+  explicit overflow policies, and drop accounting.
+- Verified ordered delivery and isolation of slow and failed consumers.
 
-Phase 3 stops after Phase 3B pending separate authorization for later
-subphases. FastAPI and the CLI executable are not part of Phase 3B.
+Phase 3 stops after Phase 3C pending separate authorization for later
+subphases. WebSockets, FastAPI, and the CLI executable are not part of Phase
+3C.
 
 ## Deferred
 
