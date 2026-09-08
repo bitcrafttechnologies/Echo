@@ -28,6 +28,7 @@ Phase 1 stops here.
 - Phase 2B (`0.2.2`): bounded in-memory Signal history — completed.
 - Phase 2C (`0.2.3`): bounded Task and Action history — completed.
 - Phase 2D (`0.2.4`): runtime snapshot and inspection — completed.
+- Phase 2E (`0.2.5`): observability integration and cleanup — completed.
 - Added typed log records, a replaceable sink interface, and chronological
   in-memory storage.
 - Instrumented Signal routing, Task and Action lifecycle, Entity state changes,
@@ -38,8 +39,13 @@ Phase 1 stops here.
   history with independently configurable bounds.
 - Added a detached JSON-safe view of runtime status, uptime, Entities, active
   work, queues, recent activity, errors, scheduler state, and handlers.
+- Composed Phase 2 identity, traits, and self-model into the public Entity and
+  added character mutation audit vocabulary.
+- Verified one Signal-to-state causal chain across routing, Task, Action, logs,
+  histories, and runtime inspection with exact ID linkage and no duplicate
+  lifecycle events.
 
-Later Phase 2 and roadmap work require separate authorization.
+Phase 2 stops here. Phase 3 requires separate authorization.
 
 ## Deferred
 
@@ -49,7 +55,8 @@ advanced task behavior remain deferred to the phases defined in the plan.
 
 ## Persistent character vertical track
 
-- Phase 2: persistent identity, trait snapshots, self-model, and audit terms.
+- Phase 2: persistent identity, trait snapshots, self-model, and audit terms —
+  completed in memory; durable persistence remains deferred.
 - Phase 3: internal state, drives, Signal influence, and attention candidates.
 - Phase 4: relationship models and per-person social context.
 - Phase 5: distinct working, episodic, semantic, preference, and relationship

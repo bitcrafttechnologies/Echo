@@ -63,6 +63,32 @@ registry components provide read-only summaries; inspection never consumes a
 Signal or exposes their implementation objects. The API has no HTTP, database,
 or UI dependency.
 
+Phase 2E verifies the complete observability path as one causal chain:
+
+```text
+Signal ID
+  -> routing record
+  -> Task ID and lifecycle
+  -> Action ID and execution record
+  -> Entity state change
+  -> structured logs + bounded histories
+  -> Runtime inspection snapshot
+```
+
+Each record links through the applicable Signal, Task, Action, and Entity IDs.
+The Runtime remains the single instrumentation point; Entity Action collection
+does not emit a second copy when the same Action is returned by a handler.
+Compatibility lists retain the original kernel objects within the same bounds
+as their history APIs, while inspection returns detached data only.
+
+The Phase 2 character slice is also composed into the public `Entity`:
+immutable `EntityIdentity`, immutable `TraitProfile`, and mutable `SelfModel`
+with enforced Entity-ID agreement. Identity and traits have no public mutation
+setter. `CharacterMutationAuditRecord` supplies proposed/accepted/rejected,
+target, evidence, reason, and before/after vocabulary without creating a
+mutation service or persistence store. Runtime inspection includes this
+character slice separately from ordinary mutable Entity state.
+
 ## Boundaries
 
 The implemented kernel contains no LLM, provider routing, persistence, web API,
@@ -75,10 +101,11 @@ The implementation favors dataclasses, `asyncio`, explicit method calls, and
 composition. Decorators are only registration helpers.
 
 The amendment adds provider-independent character value types under
-`echo.entity`, but does not yet attach them to `echo.core.Entity`, persist them,
-or route them through inference. Bit's reference configuration is outside the
-generic package under `entities/bit/`. This preserves one public Entity actor
-while reserving explicit ownership boundaries for Phase 2 and later.
+`echo.entity`. Phase 2 attaches identity, traits, and self-model to
+`echo.core.Entity`; it does not persist them or route them through inference.
+Bit's reference configuration remains outside the generic package under
+`entities/bit/`. This preserves one public Entity actor while reserving later
+character slices for their roadmap phases.
 
 Handler matching accepts either a Signal type string or a Signal subclass.
 Class matching uses normal Python `isinstance` behavior, so a base Signal

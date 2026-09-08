@@ -23,3 +23,26 @@ class SelfModel:
     def __post_init__(self) -> None:
         if not self.entity_id:
             raise ValueError("entity_id must not be empty")
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name == "entity_id":
+            try:
+                object.__getattribute__(self, "entity_id")
+            except AttributeError:
+                pass
+            else:
+                raise AttributeError("self-model entity_id is immutable")
+        object.__setattr__(self, name, value)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "entity_id": self.entity_id,
+            "embodiment_id": self.embodiment_id,
+            "capabilities": self.capabilities.copy(),
+            "condition": self.condition.copy(),
+            "location": self.location,
+            "companion_ids": list(self.companion_ids),
+            "active_goal_ids": list(self.active_goal_ids),
+            "available_systems": sorted(self.available_systems),
+            "recent_event_ids": list(self.recent_event_ids),
+        }

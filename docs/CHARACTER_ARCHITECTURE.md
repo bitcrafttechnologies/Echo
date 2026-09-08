@@ -232,6 +232,13 @@ coherent slice:
 Configuration files precede runtime loaders so schemas and boundaries can be
 reviewed before persistence and inference make them consequential.
 
+Phase 2 is implemented in memory: the public Entity composes immutable
+identity and trait snapshots with an embodiment-independent self-model, runtime
+inspection exposes that character slice, construction enforces matching Entity
+IDs, and mutation audit terms are structured and serializable. Mutation policy,
+durable audit storage, configuration loading, internal state/drives integration,
+and provider boundaries remain assigned to their later phases.
+
 ## Required tests
 
 - restart persistence: identity and character survive runtime restart;

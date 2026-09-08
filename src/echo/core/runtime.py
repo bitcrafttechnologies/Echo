@@ -139,6 +139,10 @@ class Runtime:
             "entity_state": {
                 entity.id: entity.state for entity in self.entities.values()
             },
+            "entity_character": {
+                entity.id: entity.inspect_character()
+                for entity in self.entities.values()
+            },
             "active_tasks": active_tasks,
             "queued_signals": queued_signals,
             "recent_signals": [

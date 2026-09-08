@@ -2,13 +2,14 @@
 
 ## Current implementation
 
-Echo Phase 2D is a minimal, standard-library Python kernel with structured
-runtime observability, bounded histories, and unified runtime inspection.
+Echo Phase 2E is a minimal, standard-library Python kernel with a coherent
+in-memory observability layer and its Phase 2 persistent-character slice.
 
 The `0.1-amendment/character_plan` branch also records the persistent character
-architecture and adds its provider-independent base vocabulary. These types,
-Bit configuration, and prompts are scaffolding for the amended roadmap; they
-are deliberately not wired into the completed Phase 1 runtime.
+architecture and adds its provider-independent base vocabulary. Phase 2 now
+composes identity, traits, and self-model into the Entity. Internal state,
+drives, relationships, Bit configuration loading, and prompts remain
+scaffolding for their later roadmap phases.
 
 The public package exports:
 
@@ -23,6 +24,9 @@ The public package exports:
 - `SignalHistory`, `SignalHistoryEntry`, and `SignalRoutingResult`
 - `TaskHistory` and `TaskHistoryEntry`
 - `ActionHistory`, `ActionHistoryEntry`, and `ActionStatus`
+- `EntityIdentity`, `TraitProfile`, `TraitEvidence`, and `SelfModel`
+- `CharacterMutationAuditRecord`, `CharacterMutationTarget`, and
+  `CharacterMutationDecision`
 
 The working runtime path is:
 
@@ -65,6 +69,14 @@ active Tasks, queued and recent Signals, recent Actions and errors, scheduler
 status, and a per-Entity handler registry summary. Status distinguishes idle,
 active, and stopped runtimes. Opaque values are represented safely, cyclic data
 is bounded, and inspection never consumes queued work or mutates runtime state.
+
+The public `Entity` now composes immutable identity, an immutable trait
+snapshot, and an embodiment-independent self-model. Entity IDs must agree
+across all three. Identity and traits cannot be replaced through public
+setters; changing embodiment state does not change Entity identity. Structured
+mutation-audit vocabulary records target, decision, source, evidence, reason,
+before/after values, metadata, and time, but Phase 2 adds no mutation service or
+audit store.
 
 Every Runtime uses a replaceable `LogSink` and defaults to an
 `InMemoryLogSink`. Structured, timestamped events cover Signal receipt and
@@ -140,10 +152,17 @@ execution remains deferred to Medulla.
 - Phase 2D: idle, active, and stopped status with monotonic accumulated uptime.
 - Phase 2D: JSON-safe Entity, Task, Signal, Action, error, scheduler, and handler
   summaries without exposing internal queue or registry objects.
+- Phase 2E (`0.2.5`): end-to-end observability integration and cleanup.
+- Phase 2E: exact causal-ID verification across Signal routing, Task lifecycle,
+  Action lifecycle, state logs, histories, and runtime inspection.
+- Phase 2E: identity, traits, and self-model composed into the public Entity
+  with Entity-ID invariants and mutation audit vocabulary.
+- Phase 2E: exact event-count coverage confirms Action collection does not
+  duplicate creation/execution logging.
 
 ## In progress
 
-Nothing. Phase 2D is complete. Later Phase 2 work has not begun.
+Nothing. Phase 2 is complete. Phase 3 has not begun.
 
 ## Known issues
 
@@ -152,19 +171,18 @@ Nothing. Phase 2D is complete. Later Phase 2 work has not begun.
 - Actions have no Medulla executor or transport.
 - There is no long-running process host, CLI, HTTP API, or Console.
 - There are no provider, model, memory, ROS, or robotics integrations.
-- Character base types are not yet composed into `echo.core.Entity` or loaded
-  from the Bit YAML configuration.
+- Bit YAML configuration is not yet loaded into `echo.core.Entity`.
 - There is no character persistence, context builder, consolidation service,
   behavior policy, or character mutation audit store yet.
 - Scheduler `periodic` is a priority class, not a recurring timer facility.
 - Signal payloads must already contain JSON-compatible values for `to_json`.
 
-These are roadmap deferrals, not missing Phase 2D acceptance criteria.
+These are roadmap deferrals, not missing Phase 2 acceptance criteria.
 
 ## Architecture decisions
 
 - `Echo_Plan.md` remains the architectural source of truth.
-- Python 3.11+ and the standard library are sufficient through Phase 2D.
+- Python 3.11+ and the standard library are sufficient through Phase 2.
 - Dataclasses represent kernel records; no schema framework is required yet.
 - `unittest` verifies the project without downloaded test dependencies.
 - The Entity is the public actor abstraction.
@@ -184,6 +202,10 @@ These are roadmap deferrals, not missing Phase 2D acceptance criteria.
   primitive or introducing an external executor.
 - Runtime inspection is a pure read operation that returns detached JSON-safe
   data and remains independent of transport and presentation frameworks.
+- Entity owns immutable identity and trait snapshots plus its self-model;
+  construction rejects cross-Entity character state.
+- Mutation audit types are vocabulary only; approval policy, mutation services,
+  durable audit storage, and provider integration remain later work.
 - Requested character base modules are concrete, tested value types rather than
   empty interfaces; all other future packages remain unscaffolded.
 - Echo owns Entity continuity; providers return untrusted cognitive proposals.
@@ -192,9 +214,9 @@ These are roadmap deferrals, not missing Phase 2D acceptance criteria.
 
 ## Next task
 
-Begin the next Phase 2 subphase only when explicitly authorized. Phase 2D
-intentionally stops after runtime snapshot/inspection; persistence and replay
-remain deferred.
+Begin Phase 3 only when explicitly authorized. Phase 2 intentionally stops
+after the integrated in-memory observability and character-ownership layer;
+persistence and replay remain deferred.
 
 ## Important files
 
@@ -214,6 +236,7 @@ remain deferred.
 - `src/echo/core/task_history.py` — reference-backed Task lifecycle history.
 - `src/echo/core/action_history.py` — bounded Action lifecycle history.
 - `src/echo/core/inspection.py` — JSON-safe inspection conversion.
+- `src/echo/entity/audit.py` — character mutation audit vocabulary.
 - `tests/test_signal.py` — Signal unit tests.
 - `tests/test_entity.py` — Entity and registry unit tests.
 - `tests/test_task_action.py` — Task and Action unit tests.
@@ -223,6 +246,7 @@ remain deferred.
 - `tests/test_signal_history.py` — Phase 2B Signal history coverage.
 - `tests/test_task_action_history.py` — Phase 2C history coverage.
 - `tests/test_runtime_inspection.py` — Phase 2D snapshot coverage.
+- `tests/test_phase2_observability.py` — Phase 2 acceptance and character tests.
 - `docs/ARCHITECTURE.md` — implemented architecture boundary.
 - `docs/CHARACTER_ARCHITECTURE.md` — persistent character design and phased
   acceptance criteria.

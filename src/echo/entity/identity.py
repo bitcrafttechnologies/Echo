@@ -22,3 +22,13 @@ class EntityIdentity:
         if not self.name.strip():
             raise ValueError("name must not be empty")
         object.__setattr__(self, "core_values", tuple(self.core_values))
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "entity_id": self.entity_id,
+            "name": self.name,
+            "entity_type": self.entity_type,
+            "presentation": self.presentation,
+            "worldview": self.worldview,
+            "core_values": list(self.core_values),
+        }
