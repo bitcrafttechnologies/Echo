@@ -2,7 +2,8 @@
 
 ## Current implementation
 
-Echo Phase 1 is a minimal, standard-library Python kernel.
+Echo Phase 2A is a minimal, standard-library Python kernel with structured
+runtime observability.
 
 The `0.1-amendment/character_plan` branch also records the persistent character
 architecture and adds its provider-independent base vocabulary. These types,
@@ -18,6 +19,7 @@ The public package exports:
 - `Action`
 - `Scheduler` and `SignalPriority`
 - `Runtime`
+- `RuntimeLogEvent`, `RuntimeEventType`, `LogSink`, and `InMemoryLogSink`
 
 The working runtime path is:
 
@@ -34,13 +36,21 @@ Signal
 Signal has been processed. The Runtime keeps in-memory lists of processed
 Signals, Tasks, and Actions for direct inspection.
 
+Every Runtime uses a replaceable `LogSink` and defaults to an
+`InMemoryLogSink`. Structured, timestamped events cover Signal receipt and
+routing; Task creation and status changes; Action creation and runtime
+execution; Entity state changes; Runtime start and stop; and handler errors.
+Events carry the applicable Entity, Signal, Task, and Action IDs plus structured
+metadata. In-memory events can be filtered and are returned chronologically.
+Logging failures are isolated from runtime execution.
+
 Entities own an ID, mutable state, currently active Tasks, and their handler
 registry. An Entity registered with a Runtime can create Actions and emit nested
 Signals through simple high-level methods.
 
-Signals include type, source, timezone-aware timestamp, payload, and metadata.
-They serialize to dictionaries and JSON. Domain code can use small typed Signal
-subclasses while preserving the same transport shape.
+Signals include a stable ID, type, source, timezone-aware timestamp, payload,
+and metadata. They serialize to dictionaries and JSON. Domain code can use
+small typed Signal subclasses while preserving the same transport shape.
 
 Tasks implement pending, running, paused, blocked, completed, failed, and
 cancelled states. Their timestamps, owner, priority, context, parent/child IDs,
@@ -49,6 +59,10 @@ result, and error remain observable.
 Actions are structured intent records with type, parameters, creation time, and
 optional Entity and Task attribution. Phase 1 records them but does not execute
 them against external systems.
+
+The `action.executed` log event describes execution at the Runtime's structured
+intent boundary. It does not claim an external side effect; external Action
+execution remains deferred to Medulla.
 
 ## Completed
 
@@ -74,15 +88,21 @@ them against external systems.
 - Phase 1E: one Signal dispatching independently to multiple Entities.
 - Character amendment: ownership invariants, vertical phase plan, base value
   types, Bit seed configuration, and provider-boundary prompts.
+- Phase 2 base branch (`0.2`) established from the completed character
+  amendment.
+- Phase 2A (`0.2.1`): typed runtime log records and a replaceable sink.
+- Phase 2A: default chronological in-memory storage and filtered queries.
+- Phase 2A: Signal, Task, Action, Entity state, Runtime lifecycle, and error
+  instrumentation with related IDs.
+- Phase 2A: logging failure isolation and observability tests.
 
 ## In progress
 
-Nothing. The character amendment is documented and scaffolded; runtime
-integration remains deferred to the amended Phase 2 and later roadmap.
+Nothing. Phase 2A is complete. Phase 2B has not begun.
 
 ## Known issues
 
-- Entity state and runtime history are in memory only.
+- Entity state, runtime history, and structured logs are in memory only.
 - Signal replay storage is not implemented.
 - Actions have no Medulla executor or transport.
 - There is no long-running process host, CLI, HTTP API, or Console.
@@ -94,12 +114,12 @@ integration remains deferred to the amended Phase 2 and later roadmap.
 - Scheduler `periodic` is a priority class, not a recurring timer facility.
 - Signal payloads must already contain JSON-compatible values for `to_json`.
 
-These are roadmap deferrals, not missing Phase 1 acceptance criteria.
+These are roadmap deferrals, not missing Phase 2A acceptance criteria.
 
 ## Architecture decisions
 
 - `Echo_Plan.md` remains the architectural source of truth.
-- Python 3.11+ and the standard library are sufficient for Phase 1.
+- Python 3.11+ and the standard library are sufficient through Phase 2A.
 - Dataclasses represent kernel records; no schema framework is required yet.
 - `unittest` verifies the project without downloaded test dependencies.
 - The Entity is the public actor abstraction.
@@ -110,7 +130,8 @@ These are roadmap deferrals, not missing Phase 1 acceptance criteria.
 - One handler invocation maps to one Task.
 - Handler exceptions mark Tasks failed and propagate to the emitter.
 - Actions are recorded intent until Medulla exists.
-- Runtime history is observable but not presented as durable logging.
+- Runtime logging depends only on a small synchronous sink interface.
+- Sink failures never alter Runtime control flow.
 - Requested character base modules are concrete, tested value types rather than
   empty interfaces; all other future packages remain unscaffolded.
 - Echo owns Entity continuity; providers return untrusted cognitive proposals.
@@ -119,9 +140,8 @@ These are roadmap deferrals, not missing Phase 1 acceptance criteria.
 
 ## Next task
 
-Begin amended Phase 2 only when explicitly authorized: add observability while
-composing persistent identity, traits, and self-model into the Entity without
-folding provider concerns into the kernel.
+Begin Phase 2B only when explicitly authorized. Phase 2A intentionally stops
+after structured runtime logging.
 
 ## Important files
 
@@ -136,11 +156,13 @@ folding provider concerns into the kernel.
 - `src/echo/core/action.py` — structured Action intent.
 - `src/echo/core/scheduler.py` — stable priority scheduling.
 - `src/echo/core/runtime.py` — dispatch and coordination.
+- `src/echo/core/runtime_log.py` — structured events and log sink interface.
 - `tests/test_signal.py` — Signal unit tests.
 - `tests/test_entity.py` — Entity and registry unit tests.
 - `tests/test_task_action.py` — Task and Action unit tests.
 - `tests/test_scheduler_runtime.py` — Scheduler and Runtime unit tests.
 - `tests/test_integration.py` — public-API integration tests.
+- `tests/test_runtime_logging.py` — Phase 2A observability coverage.
 - `docs/ARCHITECTURE.md` — implemented architecture boundary.
 - `docs/CHARACTER_ARCHITECTURE.md` — persistent character design and phased
   acceptance criteria.

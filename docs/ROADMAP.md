@@ -20,11 +20,21 @@ runtime integration still follows the phases below.
 - Phase 1D (`0.1.4`): Scheduler and Runtime — completed.
 - Phase 1E (`0.1.5`): integration tests — completed.
 
-Phase 1 stops here. Later roadmap work requires separate authorization.
+Phase 1 stops here.
+
+## Phase 2 — observability
+
+- Phase 2A (`0.2.1`): structured runtime logging — completed.
+- Added typed log records, a replaceable sink interface, and chronological
+  in-memory storage.
+- Instrumented Signal routing, Task and Action lifecycle, Entity state changes,
+  Runtime lifecycle, and handler errors.
+
+Phase 2B and later roadmap work require separate authorization.
 
 ## Deferred
 
-Observability infrastructure, runtime APIs, Console, model providers,
+Remaining observability infrastructure, runtime APIs, Console, model providers,
 configuration, persistence, replay, Medulla transports, edge ML, robotics, and
 advanced task behavior remain deferred to the phases defined in the plan.
 

@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import json
 from typing import Any, Mapping
+from uuid import uuid4
 
 
 def _utc_now() -> datetime:
@@ -21,6 +22,7 @@ class Signal:
     """
 
     type: str
+    id: str = field(default_factory=lambda: str(uuid4()))
     source: str = "internal"
     timestamp: datetime = field(default_factory=_utc_now)
     payload: dict[str, Any] = field(default_factory=dict)
@@ -38,6 +40,7 @@ class Signal:
         """Return the stable transport representation of this signal."""
 
         return {
+            "id": self.id,
             "type": self.type,
             "source": self.source,
             "timestamp": self.timestamp.isoformat(),
@@ -53,6 +56,7 @@ class Signal:
         if not isinstance(timestamp, str):
             raise ValueError("signal timestamp must be an ISO-8601 string")
         return cls(
+            id=str(data.get("id", uuid4())),
             type=str(data["type"]),
             source=str(data.get("source", "internal")),
             timestamp=datetime.fromisoformat(timestamp),
@@ -73,4 +77,3 @@ class Signal:
         if not isinstance(data, dict):
             raise ValueError("serialized signal must contain an object")
         return cls.from_dict(data)
-
