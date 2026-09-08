@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Iterable
+from collections import deque
 from copy import deepcopy
 from inspect import isawaitable
+from time import monotonic
 from typing import Any
 from uuid import uuid4
 
 from echo.core.action import Action
 from echo.core.action_history import ActionHistory, ActionHistoryEntry, ActionStatus
 from echo.core.entity import Entity
+from echo.core.inspection import json_safe
 from echo.core.runtime_log import (
     InMemoryLogSink,
     LogSink,
@@ -49,6 +52,8 @@ class Runtime:
         self.task_history = TaskHistory(max_size=task_history_size)
         self.action_history = ActionHistory(max_size=action_history_size)
         self.running = False
+        self._uptime_seconds = 0.0
+        self._uptime_started: float | None = None
         self.entities: dict[str, Entity] = {}
         self.signals: list[Signal] = []
         self.tasks: list[Task] = []
@@ -59,6 +64,7 @@ class Runtime:
         self._current_task: Task | None = None
         self._current_action_ids: set[str] | None = None
         self._routing_tasks: dict[str, list[Task]] = {}
+        self._recent_errors: deque[RuntimeLogEvent] = deque(maxlen=1000)
         for entity in entities:
             self.register(entity)
         self.start()
@@ -69,6 +75,7 @@ class Runtime:
         if self.running:
             return
         self.running = True
+        self._uptime_started = monotonic()
         self._log(RuntimeEventType.RUNTIME_STARTED, metadata={"runtime_id": self.id})
 
     def stop(self) -> None:
@@ -76,6 +83,9 @@ class Runtime:
 
         if not self.running:
             return
+        if self._uptime_started is not None:
+            self._uptime_seconds += monotonic() - self._uptime_started
+            self._uptime_started = None
         self.running = False
         self._log(RuntimeEventType.RUNTIME_STOPPED, metadata={"runtime_id": self.id})
 
@@ -88,6 +98,68 @@ class Runtime:
 
     def get_entity(self, entity_id: str) -> Entity | None:
         return self.entities.get(entity_id)
+
+    @property
+    def uptime(self) -> float:
+        uptime = self._uptime_seconds
+        if self.running and self._uptime_started is not None:
+            uptime += monotonic() - self._uptime_started
+        return uptime
+
+    def inspect(self, *, recent_limit: int = 20) -> dict[str, Any]:
+        """Return a detached, JSON-safe snapshot of current Runtime state."""
+
+        if (
+            isinstance(recent_limit, bool)
+            or not isinstance(recent_limit, int)
+            or recent_limit < 0
+        ):
+            raise ValueError("recent_limit must be a non-negative integer")
+
+        active_tasks = [
+            TaskHistoryEntry.from_task(task).to_dict()
+            for entity in self.entities.values()
+            for task in entity.active_tasks.values()
+        ]
+        scheduler = self.scheduler.inspect()
+        queued_signals = scheduler.pop("queued_signals")
+        errors = list(reversed(self._recent_errors))[:recent_limit]
+        if not self.running:
+            runtime_status = "stopped"
+        elif active_tasks:
+            runtime_status = "active"
+        else:
+            runtime_status = "idle"
+
+        snapshot = {
+            "runtime_id": self.id,
+            "runtime_status": runtime_status,
+            "uptime_seconds": self.uptime,
+            "entity_ids": list(self.entities),
+            "entity_state": {
+                entity.id: entity.state for entity in self.entities.values()
+            },
+            "active_tasks": active_tasks,
+            "queued_signals": queued_signals,
+            "recent_signals": [
+                entry.to_dict() for entry in self.latest_signals(recent_limit)
+            ],
+            "recent_actions": [
+                entry.to_dict() for entry in self.latest_actions(recent_limit)
+            ],
+            "recent_errors": [event.to_dict() for event in errors],
+            "scheduler": scheduler,
+            "handler_registry": {
+                entity.id: entity.handlers.inspect()
+                for entity in self.entities.values()
+            },
+        }
+        return json_safe(snapshot)
+
+    def snapshot(self, *, recent_limit: int = 20) -> dict[str, Any]:
+        """Alias for inspect()."""
+
+        return self.inspect(recent_limit=recent_limit)
 
     def latest_signals(self, limit: int | None = None) -> tuple[SignalHistoryEntry, ...]:
         return self.signal_history.latest(limit)
@@ -440,16 +512,17 @@ class Runtime:
     ) -> None:
         """Write an observation without allowing sink failures into the Runtime."""
 
+        event = RuntimeLogEvent(
+            event_type=event_type,
+            entity_id=entity_id,
+            signal_id=signal_id,
+            task_id=task_id,
+            action_id=action_id,
+            metadata=dict(metadata or {}),
+        )
+        if event_type is RuntimeEventType.ERROR:
+            self._recent_errors.append(event)
         try:
-            self.log_sink.write(
-                RuntimeLogEvent(
-                    event_type=event_type,
-                    entity_id=entity_id,
-                    signal_id=signal_id,
-                    task_id=task_id,
-                    action_id=action_id,
-                    metadata=dict(metadata or {}),
-                )
-            )
+            self.log_sink.write(event)
         except Exception:
             pass

@@ -2,8 +2,8 @@
 
 ## Current implementation
 
-Echo Phase 2C is a minimal, standard-library Python kernel with structured
-runtime observability and bounded Signal, Task, and Action histories.
+Echo Phase 2D is a minimal, standard-library Python kernel with structured
+runtime observability, bounded histories, and unified runtime inspection.
 
 The `0.1-amendment/character_plan` branch also records the persistent character
 architecture and adds its provider-independent base vocabulary. These types,
@@ -58,6 +58,13 @@ boundary. Its snapshots include creation and execution times, lifecycle status,
 parameters, associated Entity/Task/Signal IDs, and result or error. Task and
 Action capacities default to 1,000 and are independently configurable through
 `task_history_size` and `action_history_size`.
+
+`Runtime.inspect()` (also available as `Runtime.snapshot()`) returns a detached,
+JSON-safe dictionary containing runtime status and uptime, Entity IDs and state,
+active Tasks, queued and recent Signals, recent Actions and errors, scheduler
+status, and a per-Entity handler registry summary. Status distinguishes idle,
+active, and stopped runtimes. Opaque values are represented safely, cyclic data
+is bounded, and inspection never consumes queued work or mutates runtime state.
 
 Every Runtime uses a replaceable `LogSink` and defaults to an
 `InMemoryLogSink`. Structured, timestamped events cover Signal receipt and
@@ -129,10 +136,14 @@ execution remains deferred to Medulla.
 - Phase 2C: Action creation/execution timestamps, status, associations, result,
   and error inspection.
 - Phase 2C: clean latest, ID, and filtered queries with oldest-first eviction.
+- Phase 2D (`0.2.4`): unified, framework-independent runtime inspection API.
+- Phase 2D: idle, active, and stopped status with monotonic accumulated uptime.
+- Phase 2D: JSON-safe Entity, Task, Signal, Action, error, scheduler, and handler
+  summaries without exposing internal queue or registry objects.
 
 ## In progress
 
-Nothing. Phase 2C is complete. Later Phase 2 work has not begun.
+Nothing. Phase 2D is complete. Later Phase 2 work has not begun.
 
 ## Known issues
 
@@ -148,12 +159,12 @@ Nothing. Phase 2C is complete. Later Phase 2 work has not begun.
 - Scheduler `periodic` is a priority class, not a recurring timer facility.
 - Signal payloads must already contain JSON-compatible values for `to_json`.
 
-These are roadmap deferrals, not missing Phase 2C acceptance criteria.
+These are roadmap deferrals, not missing Phase 2D acceptance criteria.
 
 ## Architecture decisions
 
 - `Echo_Plan.md` remains the architectural source of truth.
-- Python 3.11+ and the standard library are sufficient through Phase 2C.
+- Python 3.11+ and the standard library are sufficient through Phase 2D.
 - Dataclasses represent kernel records; no schema framework is required yet.
 - `unittest` verifies the project without downloaded test dependencies.
 - The Entity is the public actor abstraction.
@@ -171,6 +182,8 @@ These are roadmap deferrals, not missing Phase 2C acceptance criteria.
 - Task history references live Tasks and creates snapshots only when read.
 - Action history adds lifecycle annotations without changing the Action intent
   primitive or introducing an external executor.
+- Runtime inspection is a pure read operation that returns detached JSON-safe
+  data and remains independent of transport and presentation frameworks.
 - Requested character base modules are concrete, tested value types rather than
   empty interfaces; all other future packages remain unscaffolded.
 - Echo owns Entity continuity; providers return untrusted cognitive proposals.
@@ -179,9 +192,9 @@ These are roadmap deferrals, not missing Phase 2C acceptance criteria.
 
 ## Next task
 
-Begin the next Phase 2 subphase only when explicitly authorized. Phase 2C
-intentionally stops after Task and Action history; persistence and replay remain
-deferred.
+Begin the next Phase 2 subphase only when explicitly authorized. Phase 2D
+intentionally stops after runtime snapshot/inspection; persistence and replay
+remain deferred.
 
 ## Important files
 
@@ -200,6 +213,7 @@ deferred.
 - `src/echo/core/signal_history.py` — bounded Signal snapshots and queries.
 - `src/echo/core/task_history.py` — reference-backed Task lifecycle history.
 - `src/echo/core/action_history.py` — bounded Action lifecycle history.
+- `src/echo/core/inspection.py` — JSON-safe inspection conversion.
 - `tests/test_signal.py` — Signal unit tests.
 - `tests/test_entity.py` — Entity and registry unit tests.
 - `tests/test_task_action.py` — Task and Action unit tests.
@@ -208,6 +222,7 @@ deferred.
 - `tests/test_runtime_logging.py` — Phase 2A observability coverage.
 - `tests/test_signal_history.py` — Phase 2B Signal history coverage.
 - `tests/test_task_action_history.py` — Phase 2C history coverage.
+- `tests/test_runtime_inspection.py` — Phase 2D snapshot coverage.
 - `docs/ARCHITECTURE.md` — implemented architecture boundary.
 - `docs/CHARACTER_ARCHITECTURE.md` — persistent character design and phased
   acceptance criteria.

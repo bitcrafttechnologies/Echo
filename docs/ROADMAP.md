@@ -27,6 +27,7 @@ Phase 1 stops here.
 - Phase 2A (`0.2.1`): structured runtime logging — completed.
 - Phase 2B (`0.2.2`): bounded in-memory Signal history — completed.
 - Phase 2C (`0.2.3`): bounded Task and Action history — completed.
+- Phase 2D (`0.2.4`): runtime snapshot and inspection — completed.
 - Added typed log records, a replaceable sink interface, and chronological
   in-memory storage.
 - Instrumented Signal routing, Task and Action lifecycle, Entity state changes,
@@ -35,6 +36,8 @@ Phase 1 stops here.
   and predictable oldest-first eviction.
 - Added reference-backed Task lifecycle snapshots and Action creation/execution
   history with independently configurable bounds.
+- Added a detached JSON-safe view of runtime status, uptime, Entities, active
+  work, queues, recent activity, errors, scheduler state, and handlers.
 
 Later Phase 2 and roadmap work require separate authorization.
 

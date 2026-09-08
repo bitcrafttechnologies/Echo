@@ -41,3 +41,29 @@ class HandlerRegistry:
     def __len__(self) -> int:
         return len(self._registrations)
 
+    def inspect(self) -> dict[str, Any]:
+        """Return a serializable registration summary."""
+
+        registrations = []
+        for signal, handler in self._registrations:
+            if isinstance(signal, str):
+                signal_kind = "type"
+                signal_name = signal
+            else:
+                signal_kind = "class"
+                signal_name = f"{signal.__module__}.{signal.__qualname__}"
+            registrations.append(
+                {
+                    "signal_kind": signal_kind,
+                    "signal": signal_name,
+                    "handler": getattr(
+                        handler,
+                        "__qualname__",
+                        handler.__class__.__qualname__,
+                    ),
+                }
+            )
+        return {
+            "count": len(registrations),
+            "registrations": registrations,
+        }

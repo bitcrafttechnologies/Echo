@@ -55,6 +55,14 @@ the lifecycle data absent from that primitive: execution time, status,
 Signal association, result, and error. The Runtime's compatibility lists use
 the same bounds as their histories.
 
+Phase 2D exposes this observability through `Runtime.inspect()` and its
+`snapshot()` alias. The result is a detached JSON-safe dictionary covering
+runtime status and uptime, Entity state, active and queued work, recent
+activity and errors, scheduler state, and handler registrations. Scheduler and
+registry components provide read-only summaries; inspection never consumes a
+Signal or exposes their implementation objects. The API has no HTTP, database,
+or UI dependency.
+
 ## Boundaries
 
 The implemented kernel contains no LLM, provider routing, persistence, web API,

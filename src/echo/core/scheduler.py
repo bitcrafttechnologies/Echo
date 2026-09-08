@@ -57,6 +57,23 @@ class Scheduler:
     def __len__(self) -> int:
         return self._queue.qsize()
 
+    def inspect(self) -> dict[str, object]:
+        """Return a read-only summary without consuming queued Signals."""
+
+        scheduled = sorted(tuple(self._queue._queue))
+        return {
+            "queue_size": len(scheduled),
+            "empty": not scheduled,
+            "queued_signals": [
+                {
+                    **item.signal.to_dict(),
+                    "priority": item.priority,
+                    "sequence": item.sequence,
+                }
+                for item in scheduled
+            ],
+        }
+
     @staticmethod
     def _normalize_priority(priority: SignalPriority | int | str) -> int:
         if isinstance(priority, str):
@@ -65,4 +82,3 @@ class Scheduler:
             except KeyError as error:
                 raise ValueError(f"unknown signal priority: {priority}") from error
         return int(priority)
-
