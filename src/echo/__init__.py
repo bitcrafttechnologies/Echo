@@ -26,7 +26,11 @@ from echo.entity.audit import (
     CharacterMutationTarget,
 )
 from echo.entity.identity import EntityIdentity
+from echo.entity.attention import AttentionCandidate, AttentionProposal
+from echo.entity.drives import DriveProfile
+from echo.entity.influence import SignalInfluence
 from echo.entity.self_model import SelfModel
+from echo.entity.state import InternalState
 from echo.entity.traits import TraitEvidence, TraitProfile
 from echo.developer_commands import (
     ActionListCommand,
@@ -53,17 +57,22 @@ from echo.developer_commands import (
 )
 from echo.runtime_service import (
     ActionQuery,
+    ApplySignalInfluenceRequest,
+    CharacterStateResult,
     EmitSignalRequest,
     EntityResult,
     InvalidRequestError,
+    InvalidCharacterInfluenceError,
     LogQuery,
     LogResult,
     ResourceNotFoundError,
     RuntimeService,
     RuntimeServiceError,
+    RuntimeServiceProtocol,
     RuntimeStatusResult,
     SetStateValuesRequest,
     SignalEmissionError,
+    SignalInfluenceResult,
     SignalQuery,
     StateResult,
     StateUpdateNotAllowedError,
@@ -88,10 +97,14 @@ __all__ = [
     "ActionListCommand",
     "ActionStatus",
     "ActionQuery",
+    "ApplySignalInfluenceRequest",
+    "AttentionCandidate",
+    "AttentionProposal",
     "BackpressurePolicy",
     "CharacterMutationAuditRecord",
     "CharacterMutationDecision",
     "CharacterMutationTarget",
+    "CharacterStateResult",
     "CommandExecutionError",
     "CommandName",
     "CommandParseError",
@@ -103,11 +116,14 @@ __all__ = [
     "EntityIdentity",
     "EntityResult",
     "EntityInspectCommand",
+    "DriveProfile",
     "EmitSignalRequest",
     "HandlerRegistry",
     "InvalidTaskTransition",
     "InMemoryLogSink",
     "InvalidRequestError",
+    "InvalidCharacterInfluenceError",
+    "InternalState",
     "InvalidSubscriptionError",
     "LogSink",
     "LogQuery",
@@ -121,6 +137,7 @@ __all__ = [
     "RuntimeLogEvent",
     "RuntimeService",
     "RuntimeServiceError",
+    "RuntimeServiceProtocol",
     "RuntimeStatusResult",
     "RuntimeStatusCommand",
     "RuntimeSubscriptionError",
@@ -131,6 +148,8 @@ __all__ = [
     "SignalHistory",
     "SignalHistoryEntry",
     "SignalInjectCommand",
+    "SignalInfluence",
+    "SignalInfluenceResult",
     "SignalInspectCommand",
     "SignalListCommand",
     "SignalPriority",

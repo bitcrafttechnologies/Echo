@@ -15,6 +15,17 @@ class DriveProfile:
 
     def __post_init__(self) -> None:
         copied = dict(self.values)
-        if any(not 0.0 <= value <= 1.0 for value in copied.values()):
-            raise ValueError("drive values must be between 0 and 1")
+        for name, value in copied.items():
+            if not isinstance(name, str) or not name.strip():
+                raise ValueError("drive names must not be empty")
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not 0.0 <= value <= 1.0
+            ):
+                raise ValueError("drive values must be between 0 and 1")
+            copied[name] = float(value)
         object.__setattr__(self, "values", MappingProxyType(copied))
+
+    def to_dict(self) -> dict[str, float]:
+        return dict(self.values)

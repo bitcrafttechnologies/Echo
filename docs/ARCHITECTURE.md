@@ -3,6 +3,7 @@
 `Echo_Plan.md` is the architectural source of truth. The persistent character
 amendment is detailed in `CHARACTER_ARCHITECTURE.md`. This document records the
 implemented boundary so that code and roadmap can be compared quickly.
+The stable Phase 3 control contract is specified in `RUNTIME_API.md`.
 
 ## Kernel model
 
@@ -138,6 +139,26 @@ Runtime changes, or errors. The broker defines no wire format or network
 transport. A later WebSocket adapter may consume subscriptions through
 `RuntimeService` without moving event semantics into the web server.
 
+Phase 3D stabilizes these layers behind `RuntimeServiceProtocol`. The protocol,
+documented request/query/result types, service error codes, command schemas,
+and subscription objects are the public application boundary. Concrete history
+storage, mutable compatibility lists, dispatch ownership, active-handler
+tracking, the event broker, subscriber queues, attention retention capacity,
+and private helpers remain implementation details. Adapters can implement or
+consume the protocol without inheriting an HTTP response model or in-process
+Runtime type.
+
+Phase 3D also completes the Phase 3 character slice. The public Entity now owns
+normalized internal control state, immutable drive baselines, bounded drive
+activation, and retained attention candidates in addition to its Phase 2
+identity, traits, and self-model. A retained Signal may affect this state only
+through an explicit `RuntimeService.apply_signal_influence()` request. The
+operation validates every requested dimension before mutation, clamps accepted
+deltas, records the Signal relationship, and emits an observable state-change
+event. Active drive values contribute to attention scores. An attention
+candidate is not a Task, intention, goal, or Action and cannot cause external
+behavior by itself.
+
 ## Boundaries
 
 The implemented kernel, service, command, and subscription layers contain no
@@ -151,11 +172,12 @@ The implementation favors dataclasses, `asyncio`, explicit method calls, and
 composition. Decorators are only registration helpers.
 
 The amendment adds provider-independent character value types under
-`echo.entity`. Phase 2 attaches identity, traits, and self-model to
-`echo.core.Entity`; it does not persist them or route them through inference.
-Bit's reference configuration remains outside the generic package under
-`entities/bit/`. This preserves one public Entity actor while reserving later
-character slices for their roadmap phases.
+`echo.entity`. Phases 2 and 3 attach identity, traits, self-model, internal
+state, drives, and attention candidates to `echo.core.Entity`; they do not
+persist them or route them through inference. Bit's reference configuration
+remains outside the generic package under `entities/bit/`. This preserves one
+public Entity actor while reserving later character slices for their roadmap
+phases.
 
 Handler matching accepts either a Signal type string or a Signal subclass.
 Class matching uses normal Python `isinstance` behavior, so a base Signal
@@ -167,6 +189,9 @@ Core primitives do not depend on optional infrastructure. `Entity` owns a
 handler registry and can be attached to a `Runtime`; `Runtime` owns a
 `Scheduler` and registered entities. Optional systems added later must depend
 on this kernel rather than redefine it.
+
+Presentation and transport adapters depend on `RuntimeServiceProtocol` and the
+public command/subscription schemas. They do not depend on Runtime internals.
 
 Character state follows the same direction: identity, traits, self-model,
 internal state, drives, relationships, and memory belong to Echo. Providers

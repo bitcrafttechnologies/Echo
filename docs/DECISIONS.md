@@ -85,3 +85,24 @@ Runtime, cannot share mutable event metadata, and select an explicit
 drop-oldest or drop-newest overflow policy with drop accounting. Consumer or
 subscription failure cannot enter Runtime control flow. The broker remains
 in-process and transport-neutral; WebSockets are deferred to a later adapter.
+
+## ADR-010: The Phase 3 application contract is explicit and structural
+
+Status: accepted
+
+`RuntimeServiceProtocol` and `docs/RUNTIME_API.md` define the public control and
+inspection boundary. Stable request, result, error, command, and subscription
+types are exported from `echo`. Runtime queues, histories, broker internals,
+retention structures, mutable compatibility lists, and private coordination
+methods are not public API. Transport adapters own any HTTP, WebSocket, or CLI
+encoding and depend inward on the structural service protocol.
+
+## ADR-011: Signals influence character through a bounded service operation
+
+Status: accepted
+
+Phase 3 composes normalized internal state, immutable drive baselines, bounded
+drive activation, and attention candidates into Entity. A retained Signal may
+change control state only through an explicit, atomically validated
+`apply_signal_influence` request. Drives contribute to attention scoring;
+attention candidates never directly create or authorize Actions.

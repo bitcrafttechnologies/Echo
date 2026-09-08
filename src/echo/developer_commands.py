@@ -17,8 +17,8 @@ from echo.runtime_service import (
     ActionQuery,
     EmitSignalRequest,
     LogQuery,
-    RuntimeService,
     RuntimeServiceError,
+    RuntimeServiceProtocol,
     SetStateValuesRequest,
     SignalQuery,
     TaskQuery,
@@ -242,9 +242,11 @@ class CommandResult:
 class DeveloperCommandDispatcher:
     """Execute explicit command schemas exclusively through RuntimeService."""
 
-    def __init__(self, service: RuntimeService) -> None:
-        if not isinstance(service, RuntimeService):
-            raise CommandValidationError("service must be a RuntimeService")
+    def __init__(self, service: RuntimeServiceProtocol) -> None:
+        if not isinstance(service, RuntimeServiceProtocol):
+            raise CommandValidationError(
+                "service must implement RuntimeServiceProtocol"
+            )
         self._service = service
 
     async def execute(self, command: DeveloperCommand) -> CommandResult:
@@ -386,4 +388,3 @@ def _parse_json_object(value: str, name: str) -> dict[str, Any]:
     if not isinstance(parsed, dict):
         raise CommandParseError(f"{name} must be a JSON object")
     return parsed
-

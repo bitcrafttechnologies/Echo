@@ -66,10 +66,17 @@ Phase 2 stops here. Phase 3 requires separate authorization.
 - Added transport-neutral per-subscriber bounded queues, category filters,
   explicit overflow policies, and drop accounting.
 - Verified ordered delivery and isolation of slow and failed consumers.
+- Phase 3D (`0.3.4`): runtime API contract and Phase 3 character completion —
+  completed.
+- Documented stable service operations, commands, subscriptions, results,
+  errors, and public/private boundaries in `RUNTIME_API.md`.
+- Added `RuntimeServiceProtocol` and an executable contract example.
+- Composed internal state, drives, explicit Signal influence, and attention
+  candidates into Entity without automatic Actions.
 
-Phase 3 stops after Phase 3C pending separate authorization for later
-subphases. WebSockets, FastAPI, and the CLI executable are not part of Phase
-3C.
+Phase 3 stops after Phase 3D. Phase 4 requires separate authorization.
+WebSockets, FastAPI, the Console, and the CLI executable are not part of Phase
+3D.
 
 ## Deferred
 
@@ -81,7 +88,8 @@ advanced task behavior remain deferred to the phases defined in the plan.
 
 - Phase 2: persistent identity, trait snapshots, self-model, and audit terms —
   completed in memory; durable persistence remains deferred.
-- Phase 3: internal state, drives, Signal influence, and attention candidates.
+- Phase 3: internal state, drives, Signal influence, and attention candidates —
+  completed in memory; durable persistence remains deferred.
 - Phase 4: relationship models and per-person social context.
 - Phase 5: distinct working, episodic, semantic, preference, and relationship
   memories.

@@ -2,16 +2,17 @@
 
 ## Current implementation
 
-Echo Phase 3C is a minimal, standard-library Python kernel with stable,
-transport-agnostic runtime service, structured developer-command, and live
-event-subscription layers over its in-memory observability. It retains the
-Phase 2 persistent-character slice without beginning later Phase 3 work.
+Echo Phase 3D is a minimal, standard-library Python kernel with a documented,
+transport-agnostic runtime contract, structured developer commands, and live
+event subscriptions over its in-memory observability. Phase 3 character state,
+drives, Signal influence, and attention candidates are implemented in memory.
 
 The `0.1-amendment/character_plan` branch also records the persistent character
 architecture and adds its provider-independent base vocabulary. Phase 2 now
-composes identity, traits, and self-model into the Entity. Internal state,
-drives, relationships, Bit configuration loading, and prompts remain
-scaffolding for their later roadmap phases.
+composes identity, traits, and self-model into the Entity. Phase 3 now composes
+internal state, drive baselines and activation, and attention candidates.
+Relationships, Bit configuration loading, and prompts remain scaffolding for
+their later roadmap phases.
 
 The public package exports:
 
@@ -31,11 +32,14 @@ The public package exports:
   `CharacterMutationDecision`
 - `RuntimeService`, its typed request/query/result objects, and its
   `RuntimeServiceError` domain-error hierarchy
+- `RuntimeServiceProtocol`, the stable structural interface for adapters
 - `DeveloperCommandDispatcher`, typed command schemas, `CommandResult`, the
   `DeveloperCommandError` hierarchy, and `parse_developer_command`
 - `RuntimeEventSubscription`, `RuntimeSubscriptionRequest`,
   `RuntimeSubscriptionEvent`, event categories, backpressure policies, and
   subscription errors
+- `InternalState`, `DriveProfile`, `SignalInfluence`, `AttentionProposal`, and
+  `AttentionCandidate`
 
 The working runtime path is:
 
@@ -88,6 +92,21 @@ are never awaited. Queue overflow uses an explicit drop-oldest or drop-newest
 policy and exposes a dropped-event count. A closed, failed, or slow consumer
 cannot stop Runtime execution or affect another subscriber. The mechanism has
 no socket, WebSocket, HTTP, or framework dependency.
+
+The public Phase 3 contract is documented in `docs/RUNTIME_API.md`. It defines
+service operations, request and response conventions, stable error codes,
+developer command mappings and text grammar, event subscription schemas, and
+the boundary between public types and private Runtime implementation details.
+The executable `examples/runtime_api_contract.py` example is run by the test
+suite.
+
+An Entity now owns detached normalized `InternalState` views, immutable
+`DriveProfile` baselines, read-only drive activation views, and bounded
+`AttentionCandidate` history. `RuntimeService.apply_signal_influence()` is the
+explicit mutation path: it requires a retained Signal, validates all dimensions
+atomically, applies bounded deltas, lets active drives contribute to attention
+scoring, and publishes the change through logs and subscriptions. It never
+creates a Task, goal, intention, or Action.
 
 `SignalHistory` defaults to 1,000 entries and can be configured through
 `Runtime(signal_history_size=...)`. It stores safe snapshots of each Signal's
@@ -224,10 +243,18 @@ execution remains deferred to Medulla.
   accounting.
 - Phase 3C: ordered consumer, category, slow-subscriber, failed-consumer, and
   invalid-subscription coverage.
+- Phase 3D (`0.3.4`): documented and stabilized runtime API contract.
+- Phase 3D: public `RuntimeServiceProtocol`, response/error conventions,
+  developer command mapping, and event subscription schemas.
+- Phase 3D: executable contract example verified by the test suite.
+- Phase 3D: internal state, drive activation, Signal influence, and attention
+  candidates composed into Entity and exposed through `RuntimeService`.
+- Phase 3D: atomic influence validation, bounded control changes, drive-weighted
+  attention, observability, and no-automatic-Action coverage.
 
 ## In progress
 
-Nothing. Phase 3C is complete and later Phase 3 subphases have not begun.
+Nothing. Phase 3 is complete through Phase 3D. Phase 4 has not begun.
 
 ## Known issues
 
@@ -238,17 +265,17 @@ Nothing. Phase 3C is complete and later Phase 3 subphases have not begun.
   Console.
 - There are no provider, model, memory, ROS, or robotics integrations.
 - Bit YAML configuration is not yet loaded into `echo.core.Entity`.
-- There is no character persistence, context builder, consolidation service,
-  behavior policy, or character mutation audit store yet.
+- There is no character persistence, relationship integration, context builder,
+  consolidation service, behavior policy, or character mutation audit store.
 - Scheduler `periodic` is a priority class, not a recurring timer facility.
 - Signal payloads must already contain JSON-compatible values for `to_json`.
 
-These are roadmap deferrals, not missing Phase 3C acceptance criteria.
+These are roadmap deferrals, not missing Phase 3D acceptance criteria.
 
 ## Architecture decisions
 
 - `Echo_Plan.md` remains the architectural source of truth.
-- Python 3.11+ and the standard library are sufficient through Phase 3C.
+- Python 3.11+ and the standard library are sufficient through Phase 3D.
 - Dataclasses represent kernel records; no schema framework is required yet.
 - `unittest` verifies the project without downloaded test dependencies.
 - The Entity is the public actor abstraction.
@@ -274,6 +301,11 @@ These are roadmap deferrals, not missing Phase 3C acceptance criteria.
   only a presentation adapter and cannot select arbitrary callables.
 - Runtime events fan out through isolated bounded queues; publication never
   awaits subscribers, and overflow behavior is explicit and observable.
+- `RuntimeServiceProtocol` plus `docs/RUNTIME_API.md` define the stable
+  application contract; Runtime coordination and storage stay private.
+- Signals may affect internal state and drive activation only through explicit,
+  validated influence requests linked to retained Signal IDs.
+- Drives influence attention candidate scoring but never authorize Actions.
 - State writes are denied unless the service is configured with an explicit
   per-Entity key allowlist.
 - Runtime-owned log read history is independent of external sink behavior.
@@ -289,9 +321,9 @@ These are roadmap deferrals, not missing Phase 3C acceptance criteria.
 
 ## Next task
 
-Stop after Phase 3C. Begin the next Phase 3 subphase only when explicitly
-authorized. FastAPI, CLI, providers, persistence, replay, internal character
-state, drives, and attention remain deferred.
+Stop after Phase 3D. Do not begin Phase 4 without explicit authorization.
+FastAPI, WebSockets, the CLI executable, Console, providers, persistence,
+replay, relationships, and behavior policy remain deferred.
 
 ## Important files
 
@@ -312,6 +344,9 @@ state, drives, and attention remain deferred.
   dispatcher, minimal text parser, and command errors.
 - `src/echo/runtime_events.py` — event categories, subscription envelopes,
   bounded subscriber queues, and non-blocking broker.
+- `src/echo/entity/attention.py` — attention proposal and retained candidate
+  schemas.
+- `src/echo/entity/influence.py` — bounded Signal influence schema.
 - `src/echo/core/runtime_log.py` — structured events and log sink interface.
 - `src/echo/core/signal_history.py` — bounded Signal snapshots and queries.
 - `src/echo/core/task_history.py` — reference-backed Task lifecycle history.
@@ -334,6 +369,12 @@ state, drives, and attention remain deferred.
   validation, cancellation, and arbitrary-execution rejection.
 - `tests/test_runtime_events.py` — Phase 3C ordering, filtering, backpressure,
   failure isolation, and subscription validation.
+- `tests/test_phase3_character.py` — Phase 3 character composition, influence,
+  attention, atomicity, and observability.
+- `tests/test_api_contract.py` — executes the documented contract example.
+- `docs/RUNTIME_API.md` — stable Phase 3 service, command, subscription, and
+  response/error contract.
+- `examples/runtime_api_contract.py` — executable documented contract example.
 - `docs/ARCHITECTURE.md` — implemented architecture boundary.
 - `docs/CHARACTER_ARCHITECTURE.md` — persistent character design and phased
   acceptance criteria.

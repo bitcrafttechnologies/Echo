@@ -9,6 +9,9 @@ The character architecture amendment establishes a second foundational rule:
 Echo—not an inference model—owns Entity identity and continuity. Its design and
 vertical phase integration are documented in `docs/CHARACTER_ARCHITECTURE.md`.
 
+The stable Phase 3 control, command, subscription, response, and error contract
+is documented in `docs/RUNTIME_API.md`.
+
 ## Development
 
 Echo requires Python 3.11 or newer and uses only the standard library at

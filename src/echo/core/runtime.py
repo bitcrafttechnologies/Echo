@@ -30,6 +30,7 @@ from echo.core.signal_history import (
 )
 from echo.core.task import Task, TaskStatus
 from echo.core.task_history import TaskHistory, TaskHistoryEntry
+from echo.entity.influence import SignalInfluence
 from echo.runtime_events import (
     RuntimeEventBroker,
     RuntimeEventSubscription,
@@ -326,6 +327,34 @@ class Runtime:
                 metadata={"changes": changes, "operation": "runtime_service"},
             )
         return self._copy_state(entity.state)
+
+    def _apply_signal_influence(
+        self,
+        entity_id: str,
+        signal_id: str,
+        influence: SignalInfluence,
+    ) -> dict[str, Any] | None:
+        """Coordinate a service-validated character influence and observation."""
+
+        entity = self.get_entity(entity_id)
+        if entity is None:
+            return None
+        result = entity._apply_signal_influence(signal_id, influence)
+        candidate = result["attention_candidate"]
+        self._log(
+            RuntimeEventType.STATE_CHANGED,
+            entity_id=entity_id,
+            signal_id=signal_id,
+            metadata={
+                "operation": "signal_influence",
+                "internal_state_changes": result["internal_state_changes"],
+                "drive_activation_changes": result["drive_activation_changes"],
+                "attention_candidate": (
+                    candidate.to_dict() if candidate is not None else None
+                ),
+            },
+        )
+        return result
 
     async def emit(
         self,

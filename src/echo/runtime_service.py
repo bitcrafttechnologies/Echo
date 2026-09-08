@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from echo.core.action_history import ActionHistoryEntry, ActionStatus
 from echo.core.inspection import json_safe
@@ -16,6 +16,8 @@ from echo.core.signal import Signal
 from echo.core.signal_history import SignalHistoryEntry
 from echo.core.task import TaskStatus
 from echo.core.task_history import TaskHistoryEntry
+from echo.entity.attention import AttentionCandidate
+from echo.entity.influence import SignalInfluence
 from echo.runtime_events import (
     InvalidSubscriptionError,
     RuntimeEventSubscription,
@@ -64,6 +66,10 @@ class TaskNotCancellableError(RuntimeServiceError):
 
 class SignalEmissionError(RuntimeServiceError):
     code = "signal_emission_failed"
+
+
+class InvalidCharacterInfluenceError(RuntimeServiceError):
+    code = "invalid_character_influence"
 
 
 def _copy(value: Any) -> Any:
@@ -171,6 +177,121 @@ class LogResult:
 
     def to_dict(self) -> dict[str, Any]:
         return {"events": [_copy(event) for event in self.events]}
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
+class CharacterStateResult:
+    entity_id: str
+    internal_state: dict[str, float]
+    drive_baselines: dict[str, float]
+    drive_activations: dict[str, float]
+    attention_candidates: tuple[AttentionCandidate, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "entity_id": self.entity_id,
+            "internal_state": self.internal_state.copy(),
+            "drive_baselines": self.drive_baselines.copy(),
+            "drive_activations": self.drive_activations.copy(),
+            "attention_candidates": [
+                candidate.to_dict() for candidate in self.attention_candidates
+            ],
+        }
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
+class ApplySignalInfluenceRequest:
+    entity_id: str
+    signal_id: str
+    influence: SignalInfluence
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
+class SignalInfluenceResult:
+    entity_id: str
+    signal_id: str
+    internal_state: dict[str, float]
+    drive_activations: dict[str, float]
+    attention_candidate: AttentionCandidate | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "entity_id": self.entity_id,
+            "signal_id": self.signal_id,
+            "internal_state": self.internal_state.copy(),
+            "drive_activations": self.drive_activations.copy(),
+            "attention_candidate": (
+                self.attention_candidate.to_dict()
+                if self.attention_candidate is not None
+                else None
+            ),
+        }
+
+
+@runtime_checkable
+class RuntimeServiceProtocol(Protocol):
+    """Public control contract implemented by RuntimeService."""
+
+    def get_runtime_status(self) -> RuntimeStatusResult: ...
+
+    def get_entities(self) -> tuple[EntityResult, ...]: ...
+
+    def inspect_entity(self, entity_id: str) -> EntityResult: ...
+
+    async def emit_signal(
+        self,
+        request: EmitSignalRequest,
+    ) -> SignalHistoryEntry: ...
+
+    def get_recent_signals(
+        self,
+        query: SignalQuery | None = None,
+    ) -> tuple[SignalHistoryEntry, ...]: ...
+
+    def inspect_signal(self, signal_id: str) -> SignalHistoryEntry: ...
+
+    def get_tasks(
+        self,
+        query: TaskQuery | None = None,
+    ) -> tuple[TaskHistoryEntry, ...]: ...
+
+    def inspect_task(self, task_id: str) -> TaskHistoryEntry: ...
+
+    async def cancel_task(self, task_id: str) -> TaskHistoryEntry: ...
+
+    def get_actions(
+        self,
+        query: ActionQuery | None = None,
+    ) -> tuple[ActionHistoryEntry, ...]: ...
+
+    def inspect_action(self, action_id: str) -> ActionHistoryEntry: ...
+
+    def get_entity_state(self, entity_id: str) -> StateResult: ...
+
+    def set_allowed_state_values(
+        self,
+        request: SetStateValuesRequest,
+    ) -> StateResult: ...
+
+    def get_logs(self, query: LogQuery | None = None) -> LogResult: ...
+
+    def subscribe_events(
+        self,
+        request: RuntimeSubscriptionRequest | None = None,
+    ) -> RuntimeEventSubscription: ...
+
+    def get_character_state(self, entity_id: str) -> CharacterStateResult: ...
+
+    def get_attention_candidates(
+        self,
+        entity_id: str,
+        limit: int | None = 20,
+    ) -> tuple[AttentionCandidate, ...]: ...
+
+    def apply_signal_influence(
+        self,
+        request: ApplySignalInfluenceRequest,
+    ) -> SignalInfluenceResult: ...
 
 
 class RuntimeService:
@@ -342,6 +463,63 @@ class RuntimeService:
     def get_entity_state(self, entity_id: str) -> StateResult:
         entity = self._require_entity(entity_id)
         return StateResult(entity_id=entity_id, values=_copy(entity.state))
+
+    def get_character_state(self, entity_id: str) -> CharacterStateResult:
+        entity = self._require_entity(entity_id)
+        return CharacterStateResult(
+            entity_id=entity.id,
+            internal_state=entity.internal_state.to_dict(),
+            drive_baselines=entity.drives.to_dict(),
+            drive_activations=dict(entity.drive_activations),
+            attention_candidates=entity.attention_candidates,
+        )
+
+    def get_attention_candidates(
+        self,
+        entity_id: str,
+        limit: int | None = 20,
+    ) -> tuple[AttentionCandidate, ...]:
+        _validate_limit(limit)
+        entity = self._require_entity(entity_id)
+        candidates = entity.attention_candidates
+        return candidates if limit is None else candidates[:limit]
+
+    def apply_signal_influence(
+        self,
+        request: ApplySignalInfluenceRequest,
+    ) -> SignalInfluenceResult:
+        if not isinstance(request, ApplySignalInfluenceRequest):
+            raise InvalidRequestError(
+                "apply_signal_influence requires an ApplySignalInfluenceRequest"
+            )
+        self._validate_identifier(request.entity_id, "entity_id")
+        self._validate_identifier(request.signal_id, "signal_id")
+        if not isinstance(request.influence, SignalInfluence):
+            raise InvalidRequestError("influence must be a SignalInfluence")
+        self._require_entity(request.entity_id)
+        self.inspect_signal(request.signal_id)
+        try:
+            result = self._runtime._apply_signal_influence(
+                request.entity_id,
+                request.signal_id,
+                request.influence,
+            )
+        except (KeyError, ValueError) as error:
+            raise InvalidCharacterInfluenceError(
+                str(error),
+                details={
+                    "entity_id": request.entity_id,
+                    "signal_id": request.signal_id,
+                },
+            ) from error
+        assert result is not None
+        return SignalInfluenceResult(
+            entity_id=request.entity_id,
+            signal_id=request.signal_id,
+            internal_state=result["internal_state"],
+            drive_activations=result["drive_activations"],
+            attention_candidate=result["attention_candidate"],
+        )
 
     def set_allowed_state_values(self, request: SetStateValuesRequest) -> StateResult:
         if not isinstance(request, SetStateValuesRequest):
