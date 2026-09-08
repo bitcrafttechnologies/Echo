@@ -47,9 +47,21 @@ Phase 1 stops here.
 
 Phase 2 stops here. Phase 3 requires separate authorization.
 
+## Phase 3 — runtime API
+
+- Phase 3A (`0.3.1`): internal runtime service API — completed.
+- Added a transport-agnostic `RuntimeService` for status, Entities, Signals,
+  Tasks, Actions, Entity state, allowlisted state updates, and logs.
+- Added structured request/query/result objects and clean domain errors.
+- Added deterministic cancellation of live handler Tasks.
+- Exercised every service operation against a live Runtime.
+
+Phase 3 stops after Phase 3A pending separate authorization for later
+subphases. FastAPI is not part of Phase 3A.
+
 ## Deferred
 
-Remaining observability infrastructure, runtime APIs, Console, model providers,
+Remaining runtime APIs, Console, model providers,
 configuration, persistence, replay, Medulla transports, edge ML, robotics, and
 advanced task behavior remain deferred to the phases defined in the plan.
 

@@ -53,3 +53,14 @@ isolated subsystem added after inference. Bit is the first reference
 configuration under `entities/bit/`; generic runtime code must not contain
 Bit-specific assumptions. The full decision and consequences are documented in
 `CHARACTER_ARCHITECTURE.md`.
+
+## ADR-007: RuntimeService is the transport-independent control boundary
+
+Status: accepted
+
+CLI, tests, and future network adapters control Echo through `RuntimeService`.
+The service uses typed domain requests, detached results, explicit state-write
+allowlists, and stable domain errors. It contains no HTTP or FastAPI concepts.
+The Runtime remains responsible for lifecycle-sensitive operations such as live
+Task cancellation and for retaining readable logs independently of its external
+sink.

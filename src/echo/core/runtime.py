@@ -64,6 +64,10 @@ class Runtime:
         self._current_task: Task | None = None
         self._current_action_ids: set[str] | None = None
         self._routing_tasks: dict[str, list[Task]] = {}
+        self._active_task_runs: dict[
+            str, tuple[asyncio.Task[Any], asyncio.Event]
+        ] = {}
+        self._log_events: deque[RuntimeLogEvent] = deque(maxlen=1000)
         self._recent_errors: deque[RuntimeLogEvent] = deque(maxlen=1000)
         for entity in entities:
             self.register(entity)
@@ -216,6 +220,99 @@ class Runtime:
             signal_id=signal_id,
         )
 
+    def latest_logs(
+        self,
+        limit: int | None = None,
+        *,
+        event_type: RuntimeEventType | str | None = None,
+        entity_id: str | None = None,
+        signal_id: str | None = None,
+        task_id: str | None = None,
+        action_id: str | None = None,
+    ) -> tuple[RuntimeLogEvent, ...]:
+        """Return detached log events, newest first, independent of the sink."""
+
+        if limit is not None and (
+            isinstance(limit, bool) or not isinstance(limit, int) or limit < 0
+        ):
+            raise ValueError("log limit must be a non-negative integer")
+        if isinstance(event_type, str):
+            event_type = RuntimeEventType(event_type)
+        events = (
+            event
+            for event in reversed(self._log_events)
+            if (event_type is None or event.event_type is event_type)
+            and (entity_id is None or event.entity_id == entity_id)
+            and (signal_id is None or event.signal_id == signal_id)
+            and (task_id is None or event.task_id == task_id)
+            and (action_id is None or event.action_id == action_id)
+        )
+        selected = list(events)
+        if limit is not None:
+            selected = selected[:limit]
+        return tuple(
+            RuntimeLogEvent(
+                event_type=event.event_type,
+                timestamp=event.timestamp,
+                entity_id=event.entity_id,
+                signal_id=event.signal_id,
+                task_id=event.task_id,
+                action_id=event.action_id,
+                metadata=self._copy_state(event.metadata),
+            )
+            for event in selected
+        )
+
+    async def cancel_task(self, task_id: str) -> TaskHistoryEntry | None:
+        """Cancel an executing handler Task and wait for lifecycle cleanup."""
+
+        entry = self.get_task(task_id)
+        if entry is None or entry.status in {
+            TaskStatus.COMPLETED,
+            TaskStatus.FAILED,
+            TaskStatus.CANCELLED,
+        }:
+            return entry
+        active = self._active_task_runs.get(task_id)
+        if active is None:
+            return entry
+        execution, completed = active
+        if execution is asyncio.current_task():
+            raise RuntimeError("a task cannot cancel its own handler execution")
+        execution.cancel()
+        await completed.wait()
+        return self.get_task(task_id)
+
+    def update_entity_state(
+        self,
+        entity_id: str,
+        values: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Apply copied state values and record the detached change summary."""
+
+        entity = self.get_entity(entity_id)
+        if entity is None:
+            return None
+        before = self._copy_state(entity.state)
+        updates = self._copy_state(values)
+        entity.state.update(updates)
+        changes = {
+            key: {
+                "operation": "updated" if key in before else "added",
+                **({"before": before[key]} if key in before else {}),
+                "after": self._copy_state({key: entity.state[key]})[key],
+            }
+            for key in updates
+            if key not in before or before[key] != entity.state[key]
+        }
+        if changes:
+            self._log(
+                RuntimeEventType.STATE_CHANGED,
+                entity_id=entity.id,
+                metadata={"changes": changes, "operation": "runtime_service"},
+            )
+        return self._copy_state(entity.state)
+
     async def emit(
         self,
         signal: Signal,
@@ -235,7 +332,13 @@ class Runtime:
         )
 
         current = asyncio.current_task()
-        if current is not None and self._dispatch_owner is current:
+        is_handler_execution = current is not None and any(
+            execution is current
+            for execution, _completed in self._active_task_runs.values()
+        )
+        if current is not None and (
+            self._dispatch_owner is current or is_handler_execution
+        ):
             await self.scheduler.schedule(signal, priority)
             await self._process_through(signal)
             return
@@ -304,7 +407,9 @@ class Runtime:
                     )
                 for handler in handlers:
                     handler_count += 1
-                    await self._run_handler(entity, handler, signal)
+                    await asyncio.create_task(
+                        self._run_handler(entity, handler, signal)
+                    )
         except BaseException as error:
             routing_error = error
             raise
@@ -361,6 +466,10 @@ class Runtime:
         self._current_entity = entity
         self._current_task = task
         self._current_action_ids = set()
+        execution = asyncio.current_task()
+        completed = asyncio.Event()
+        if execution is not None:
+            self._active_task_runs[task.id] = (execution, completed)
         state_before = self._copy_state(entity.state)
         task.start()
         self._log_task_status(task, signal, "pending")
@@ -396,6 +505,8 @@ class Runtime:
             self._current_entity = previous_entity
             self._current_task = previous_task
             self._current_action_ids = previous_action_ids
+            self._active_task_runs.pop(task.id, None)
+            completed.set()
 
     def record_action(
         self,
@@ -526,6 +637,7 @@ class Runtime:
         )
         if event_type is RuntimeEventType.ERROR:
             self._recent_errors.append(event)
+        self._log_events.append(event)
         try:
             self.log_sink.write(event)
         except Exception:

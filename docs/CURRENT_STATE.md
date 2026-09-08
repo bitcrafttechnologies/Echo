@@ -2,8 +2,10 @@
 
 ## Current implementation
 
-Echo Phase 2E is a minimal, standard-library Python kernel with a coherent
-in-memory observability layer and its Phase 2 persistent-character slice.
+Echo Phase 3A is a minimal, standard-library Python kernel with a stable,
+transport-agnostic runtime service API over its in-memory observability layer.
+It retains the Phase 2 persistent-character slice without beginning the later
+Phase 3 character work.
 
 The `0.1-amendment/character_plan` branch also records the persistent character
 architecture and adds its provider-independent base vocabulary. Phase 2 now
@@ -27,6 +29,8 @@ The public package exports:
 - `EntityIdentity`, `TraitProfile`, `TraitEvidence`, and `SelfModel`
 - `CharacterMutationAuditRecord`, `CharacterMutationTarget`, and
   `CharacterMutationDecision`
+- `RuntimeService`, its typed request/query/result objects, and its
+  `RuntimeServiceError` domain-error hierarchy
 
 The working runtime path is:
 
@@ -42,6 +46,22 @@ Signal
 `Runtime.emit` is awaited and deterministic. It returns after the emitted
 Signal has been processed. The Runtime keeps bounded compatibility lists of
 recent Signal, Task, and Action objects alongside their read APIs.
+
+`RuntimeService` is the supported programmatic control boundary for CLI,
+tests, and future network adapters. It exposes runtime status; Entity listing
+and inspection; Signal emission, listing, and inspection; Task listing,
+inspection, and live cancellation; Action listing and inspection; detached
+Entity state reads; explicitly allowlisted state writes; and structured log
+queries. Inputs and outputs are typed where that clarifies the contract.
+Returned state, metadata, and history values are detached from Runtime-owned
+mutable structures. Missing resources, invalid requests, forbidden state
+writes, failed Signal processing, and invalid Task cancellation use structured
+domain errors with stable codes.
+
+Live Task cancellation targets the executing handler and waits for lifecycle
+cleanup, so the returned Task snapshot is already `cancelled`. The Runtime also
+retains a bounded internal read history of log events, allowing service log
+queries to work independently of the configured external `LogSink`.
 
 `SignalHistory` defaults to 1,000 entries and can be configured through
 `Runtime(signal_history_size=...)`. It stores safe snapshots of each Signal's
@@ -159,17 +179,24 @@ execution remains deferred to Medulla.
   with Entity-ID invariants and mutation audit vocabulary.
 - Phase 2E: exact event-count coverage confirms Action collection does not
   duplicate creation/execution logging.
+- Phase 3 base branch (`0.3`) established from completed Phase 2.
+- Phase 3A (`0.3.1`): transport-agnostic `RuntimeService` control boundary.
+- Phase 3A: detached Entity, Signal, Task, Action, state, status, and log reads.
+- Phase 3A: structured Signal emission, allowlisted state updates, and live
+  Task cancellation.
+- Phase 3A: clean domain failures and live-runtime coverage of every operation.
 
 ## In progress
 
-Nothing. Phase 2 is complete. Phase 3 has not begun.
+Nothing. Phase 3A is complete and later Phase 3 subphases have not begun.
 
 ## Known issues
 
 - Entity state, runtime histories, and structured logs are in memory only.
 - Signal replay storage is not implemented.
 - Actions have no Medulla executor or transport.
-- There is no long-running process host, CLI, HTTP API, or Console.
+- There is no long-running process host, CLI, HTTP API, FastAPI adapter, or
+  Console.
 - There are no provider, model, memory, ROS, or robotics integrations.
 - Bit YAML configuration is not yet loaded into `echo.core.Entity`.
 - There is no character persistence, context builder, consolidation service,
@@ -202,6 +229,11 @@ These are roadmap deferrals, not missing Phase 2 acceptance criteria.
   primitive or introducing an external executor.
 - Runtime inspection is a pure read operation that returns detached JSON-safe
   data and remains independent of transport and presentation frameworks.
+- `RuntimeService` is the stable control boundary; CLI and future network
+  adapters depend on it instead of reaching into Runtime-owned structures.
+- State writes are denied unless the service is configured with an explicit
+  per-Entity key allowlist.
+- Runtime-owned log read history is independent of external sink behavior.
 - Entity owns immutable identity and trait snapshots plus its self-model;
   construction rejects cross-Entity character state.
 - Mutation audit types are vocabulary only; approval policy, mutation services,
@@ -214,9 +246,9 @@ These are roadmap deferrals, not missing Phase 2 acceptance criteria.
 
 ## Next task
 
-Begin Phase 3 only when explicitly authorized. Phase 2 intentionally stops
-after the integrated in-memory observability and character-ownership layer;
-persistence and replay remain deferred.
+Stop after Phase 3A. Begin the next Phase 3 subphase only when explicitly
+authorized. FastAPI, CLI, providers, persistence, replay, internal character
+state, drives, and attention remain deferred.
 
 ## Important files
 
@@ -231,6 +263,8 @@ persistence and replay remain deferred.
 - `src/echo/core/action.py` — structured Action intent.
 - `src/echo/core/scheduler.py` — stable priority scheduling.
 - `src/echo/core/runtime.py` — dispatch and coordination.
+- `src/echo/runtime_service.py` — transport-agnostic runtime service API,
+  request/result types, and domain errors.
 - `src/echo/core/runtime_log.py` — structured events and log sink interface.
 - `src/echo/core/signal_history.py` — bounded Signal snapshots and queries.
 - `src/echo/core/task_history.py` — reference-backed Task lifecycle history.
@@ -247,6 +281,8 @@ persistence and replay remain deferred.
 - `tests/test_task_action_history.py` — Phase 2C history coverage.
 - `tests/test_runtime_inspection.py` — Phase 2D snapshot coverage.
 - `tests/test_phase2_observability.py` — Phase 2 acceptance and character tests.
+- `tests/test_runtime_service.py` — every Phase 3A operation against a live
+  Runtime plus domain-error behavior.
 - `docs/ARCHITECTURE.md` — implemented architecture boundary.
 - `docs/CHARACTER_ARCHITECTURE.md` — persistent character design and phased
   acceptance criteria.

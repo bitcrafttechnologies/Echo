@@ -89,10 +89,20 @@ target, evidence, reason, and before/after vocabulary without creating a
 mutation service or persistence store. Runtime inspection includes this
 character slice separately from ordinary mutable Entity state.
 
+Phase 3A adds `RuntimeService` as the supported application boundary above the
+kernel. It accepts domain objects and typed request/query records rather than
+HTTP concepts. It returns detached Entity and state results plus existing safe
+history snapshots, and reports invalid operations through a structured domain
+error hierarchy. Per-Entity state mutations require an explicit key allowlist.
+Live Task cancellation is coordinated by the Runtime and completes the Task's
+lifecycle before returning. A bounded Runtime-owned log read history keeps API
+log access independent of external sink capabilities.
+
 ## Boundaries
 
-The implemented kernel contains no LLM, provider routing, persistence, web API,
-Console, ROS, or Medulla transport. Actions are structured intent records;
+The implemented kernel and service contain no LLM, provider routing,
+persistence, web API, FastAPI, Console, ROS, or Medulla transport. Actions are
+structured intent records;
 execution against the outside world belongs to the later Medulla boundary.
 The Phase 2A `action.executed` observation identifies execution at the Runtime
 intent boundary, not an external side effect.
