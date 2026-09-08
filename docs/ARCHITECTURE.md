@@ -40,6 +40,13 @@ applicable Entity/Signal/Task/Action IDs, and metadata. Sink failures are
 isolated from runtime control flow. This is instrumentation, not a second event
 system.
 
+Phase 2B adds a bounded `SignalHistory` owned by each Runtime. It snapshots
+Signal transport fields before handler execution and records the routing result
+afterward, including matched Entities and resulting Tasks. Queries operate on
+the in-memory snapshots by recency, ID, type, and source. Capacity is explicit,
+and insertion order determines oldest-first eviction. There is no persistence
+or replay behavior in this component.
+
 ## Boundaries
 
 The implemented kernel contains no LLM, provider routing, persistence, web API,

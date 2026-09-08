@@ -2,8 +2,8 @@
 
 ## Current implementation
 
-Echo Phase 2A is a minimal, standard-library Python kernel with structured
-runtime observability.
+Echo Phase 2B is a minimal, standard-library Python kernel with structured
+runtime observability and bounded Signal history.
 
 The `0.1-amendment/character_plan` branch also records the persistent character
 architecture and adds its provider-independent base vocabulary. These types,
@@ -20,6 +20,7 @@ The public package exports:
 - `Scheduler` and `SignalPriority`
 - `Runtime`
 - `RuntimeLogEvent`, `RuntimeEventType`, `LogSink`, and `InMemoryLogSink`
+- `SignalHistory`, `SignalHistoryEntry`, and `SignalRoutingResult`
 
 The working runtime path is:
 
@@ -33,8 +34,16 @@ Signal
 ```
 
 `Runtime.emit` is awaited and deterministic. It returns after the emitted
-Signal has been processed. The Runtime keeps in-memory lists of processed
-Signals, Tasks, and Actions for direct inspection.
+Signal has been processed. The Runtime keeps in-memory Tasks and Actions for
+direct inspection and a bounded list of recent Signal objects for compatibility.
+
+`SignalHistory` defaults to 1,000 entries and can be configured through
+`Runtime(signal_history_size=...)`. It stores safe snapshots of each Signal's
+ID, type, source, timestamp, payload, and metadata before routing, then attaches
+the routing outcome, matched Entity IDs, attempted handler count, Task IDs and
+statuses, and any processing error. Queries return newest entries first and
+support limits, ID lookup, and filtering by type and source. Unknown or evicted
+IDs return `None`; the oldest entry is evicted first when capacity is exceeded.
 
 Every Runtime uses a replaceable `LogSink` and defaults to an
 `InMemoryLogSink`. Structured, timestamped events cover Signal receipt and
@@ -95,14 +104,19 @@ execution remains deferred to Medulla.
 - Phase 2A: Signal, Task, Action, Entity state, Runtime lifecycle, and error
   instrumentation with related IDs.
 - Phase 2A: logging failure isolation and observability tests.
+- Phase 2B (`0.2.2`): bounded in-memory Signal history and safe snapshots.
+- Phase 2B: latest, ID, type, and source queries with predictable oldest-first
+  eviction.
+- Phase 2B: structured routing results for handled, unhandled, failed, and
+  cancelled processing.
 
 ## In progress
 
-Nothing. Phase 2A is complete. Phase 2B has not begun.
+Nothing. Phase 2B is complete. Later Phase 2 work has not begun.
 
 ## Known issues
 
-- Entity state, runtime history, and structured logs are in memory only.
+- Entity state, runtime histories, and structured logs are in memory only.
 - Signal replay storage is not implemented.
 - Actions have no Medulla executor or transport.
 - There is no long-running process host, CLI, HTTP API, or Console.
@@ -114,12 +128,12 @@ Nothing. Phase 2A is complete. Phase 2B has not begun.
 - Scheduler `periodic` is a priority class, not a recurring timer facility.
 - Signal payloads must already contain JSON-compatible values for `to_json`.
 
-These are roadmap deferrals, not missing Phase 2A acceptance criteria.
+These are roadmap deferrals, not missing Phase 2B acceptance criteria.
 
 ## Architecture decisions
 
 - `Echo_Plan.md` remains the architectural source of truth.
-- Python 3.11+ and the standard library are sufficient through Phase 2A.
+- Python 3.11+ and the standard library are sufficient through Phase 2B.
 - Dataclasses represent kernel records; no schema framework is required yet.
 - `unittest` verifies the project without downloaded test dependencies.
 - The Entity is the public actor abstraction.
@@ -132,6 +146,8 @@ These are roadmap deferrals, not missing Phase 2A acceptance criteria.
 - Actions are recorded intent until Medulla exists.
 - Runtime logging depends only on a small synchronous sink interface.
 - Sink failures never alter Runtime control flow.
+- Signal history owns copied snapshots, is bounded independently per Runtime,
+  and evicts in processing order.
 - Requested character base modules are concrete, tested value types rather than
   empty interfaces; all other future packages remain unscaffolded.
 - Echo owns Entity continuity; providers return untrusted cognitive proposals.
@@ -140,8 +156,9 @@ These are roadmap deferrals, not missing Phase 2A acceptance criteria.
 
 ## Next task
 
-Begin Phase 2B only when explicitly authorized. Phase 2A intentionally stops
-after structured runtime logging.
+Begin the next Phase 2 subphase only when explicitly authorized. Phase 2B
+intentionally stops after bounded Signal history; persistence and replay remain
+deferred.
 
 ## Important files
 
@@ -157,12 +174,14 @@ after structured runtime logging.
 - `src/echo/core/scheduler.py` — stable priority scheduling.
 - `src/echo/core/runtime.py` — dispatch and coordination.
 - `src/echo/core/runtime_log.py` — structured events and log sink interface.
+- `src/echo/core/signal_history.py` — bounded Signal snapshots and queries.
 - `tests/test_signal.py` — Signal unit tests.
 - `tests/test_entity.py` — Entity and registry unit tests.
 - `tests/test_task_action.py` — Task and Action unit tests.
 - `tests/test_scheduler_runtime.py` — Scheduler and Runtime unit tests.
 - `tests/test_integration.py` — public-API integration tests.
 - `tests/test_runtime_logging.py` — Phase 2A observability coverage.
+- `tests/test_signal_history.py` — Phase 2B Signal history coverage.
 - `docs/ARCHITECTURE.md` — implemented architecture boundary.
 - `docs/CHARACTER_ARCHITECTURE.md` — persistent character design and phased
   acceptance criteria.

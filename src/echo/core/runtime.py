@@ -19,6 +19,11 @@ from echo.core.runtime_log import (
 )
 from echo.core.scheduler import Scheduler, SignalPriority
 from echo.core.signal import Signal
+from echo.core.signal_history import (
+    SignalHistory,
+    SignalHistoryEntry,
+    SignalRoutingResult,
+)
 from echo.core.task import Task
 
 
@@ -31,10 +36,12 @@ class Runtime:
         *,
         scheduler: Scheduler | None = None,
         log_sink: LogSink | None = None,
+        signal_history_size: int = 1000,
     ) -> None:
         self.id = str(uuid4())
         self.scheduler = scheduler or Scheduler()
         self.log_sink = log_sink or InMemoryLogSink()
+        self.signal_history = SignalHistory(max_size=signal_history_size)
         self.running = False
         self.entities: dict[str, Entity] = {}
         self.signals: list[Signal] = []
@@ -73,6 +80,20 @@ class Runtime:
 
     def get_entity(self, entity_id: str) -> Entity | None:
         return self.entities.get(entity_id)
+
+    def latest_signals(self, limit: int | None = None) -> tuple[SignalHistoryEntry, ...]:
+        return self.signal_history.latest(limit)
+
+    def get_signal(self, signal_id: str) -> SignalHistoryEntry | None:
+        return self.signal_history.get(signal_id)
+
+    def filter_signals(
+        self,
+        *,
+        signal_type: str | None = None,
+        source: str | None = None,
+    ) -> tuple[SignalHistoryEntry, ...]:
+        return self.signal_history.filter(signal_type=signal_type, source=source)
 
     async def emit(
         self,
@@ -139,20 +160,64 @@ class Runtime:
 
     async def _dispatch(self, signal: Signal) -> None:
         self.signals.append(signal)
-        for entity in self.entities.values():
-            handlers = entity.handlers.resolve(signal)
-            if handlers:
-                self._log(
-                    RuntimeEventType.SIGNAL_ROUTED,
-                    entity_id=entity.id,
-                    signal_id=signal.id,
-                    metadata={
-                        "signal_type": signal.type,
-                        "handler_count": len(handlers),
-                    },
+        if len(self.signals) > self.signal_history.max_size:
+            del self.signals[0]
+        self.signal_history.record(signal)
+        entity_ids: list[str] = []
+        handler_count = 0
+        routing_error: BaseException | None = None
+        try:
+            for entity in self.entities.values():
+                handlers = entity.handlers.resolve(signal)
+                if handlers:
+                    entity_ids.append(entity.id)
+                    self._log(
+                        RuntimeEventType.SIGNAL_ROUTED,
+                        entity_id=entity.id,
+                        signal_id=signal.id,
+                        metadata={
+                            "signal_type": signal.type,
+                            "handler_count": len(handlers),
+                        },
+                    )
+                for handler in handlers:
+                    handler_count += 1
+                    await self._run_handler(entity, handler, signal)
+        except BaseException as error:
+            routing_error = error
+            raise
+        finally:
+            routed_tasks = [
+                task
+                for task in self.tasks
+                if isinstance(task.context.get("signal"), dict)
+                and task.context["signal"].get("id") == signal.id
+            ]
+            statuses = {task.id: task.status.value for task in routed_tasks}
+            if routing_error is not None:
+                status = (
+                    "cancelled"
+                    if isinstance(routing_error, asyncio.CancelledError)
+                    else "failed"
                 )
-            for handler in handlers:
-                await self._run_handler(entity, handler, signal)
+                error_data = {
+                    "type": type(routing_error).__name__,
+                    "message": str(routing_error),
+                }
+            else:
+                status = "completed" if handler_count else "unhandled"
+                error_data = None
+            self.signal_history.set_routing_result(
+                signal.id,
+                SignalRoutingResult(
+                    status=status,
+                    entity_ids=tuple(entity_ids),
+                    handler_count=handler_count,
+                    task_ids=tuple(task.id for task in routed_tasks),
+                    task_statuses=statuses,
+                    error=error_data,
+                ),
+            )
 
     async def _run_handler(self, entity: Entity, handler: Any, signal: Signal) -> None:
         task = Task(

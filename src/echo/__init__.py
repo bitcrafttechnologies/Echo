@@ -12,6 +12,11 @@ from echo.core.runtime_log import (
 )
 from echo.core.scheduler import Scheduler, SignalPriority
 from echo.core.signal import Signal
+from echo.core.signal_history import (
+    SignalHistory,
+    SignalHistoryEntry,
+    SignalRoutingResult,
+)
 from echo.core.task import InvalidTaskTransition, Task, TaskStatus
 
 __all__ = [
@@ -26,7 +31,10 @@ __all__ = [
     "RuntimeLogEvent",
     "Scheduler",
     "Signal",
+    "SignalHistory",
+    "SignalHistoryEntry",
     "SignalPriority",
+    "SignalRoutingResult",
     "Task",
     "TaskStatus",
 ]
