@@ -2,12 +2,13 @@
 
 ## Current implementation
 
-Echo Phase 4B consists of a minimal, standard-library Python kernel plus an
-optional FastAPI HTTP and WebSocket adapter. The documented,
-transport-agnostic runtime contract, structured developer commands, and live
-event subscriptions remain the only control boundary used by the transport
-layer. Phase 3 character state, drives, Signal influence, and attention
-candidates are implemented in memory.
+Echo Phase 4C consists of a minimal, standard-library Python kernel, an
+optional FastAPI HTTP and WebSocket adapter, and a separate SvelteKit
+development console shell. The documented, transport-agnostic runtime
+contract, structured developer commands, and live event subscriptions remain
+the only control boundary used by the transport and presentation layers. Phase
+3 character state, drives, Signal influence, and attention candidates are
+implemented in memory.
 
 The `0.1-amendment/character_plan` branch also records the persistent character
 architecture and adds its provider-independent base vocabulary. Phase 2 now
@@ -130,6 +131,15 @@ Socket writes consume the queue in a separate coroutine from Runtime event
 publication, so a slow client cannot block Echo. A concurrent receive loop
 detects disconnects; guaranteed cleanup closes and removes the subscription.
 Reconnects create fresh future-only subscriptions.
+
+The `console/` SvelteKit application provides a responsive Runtime header,
+navigation sidebar, main workspace, separate API and event-stream connection
+states, and a small recent-event view. Initial navigation contains Overview,
+Signals, Tasks, Entity, Logs, and Chat; only the shell and Overview pulse are
+implemented in Phase 4C. The browser client polls `/runtime/status`, connects
+to `/events`, retries with bounded delay, and remains navigable while Echo is
+offline. Local development uses a Vite proxy by default, preserving the
+FastAPI adapter as the network boundary.
 
 `SignalHistory` defaults to 1,000 entries and can be configured through
 `Runtime(signal_history_size=...)`. It stores safe snapshots of each Signal's
@@ -288,17 +298,25 @@ execution remains deferred to Medulla.
   envelopes with optional category filtering.
 - Phase 4B: clean disconnect removal, future-only reconnect behavior, bounded
   slow-client backpressure, and runtime-isolation coverage.
+- Phase 4C (`0.4.3`): initial responsive SvelteKit Echo Console shell.
+- Phase 4C: Runtime status header, Overview workspace, API/WebSocket connection
+  indicators, and Overview/Signals/Tasks/Entity/Logs/Chat navigation.
+- Phase 4C: HTTP status polling, WebSocket event consumption, reconnect/backoff,
+  explicit offline state, client-helper tests, type checks, and production
+  build verification.
 
 ## In progress
 
-Nothing. Phase 4 is complete through Phase 4B.
+Nothing. Phase 4 is complete through Phase 4C.
 
 ## Known issues
 
 - Entity state, runtime histories, and structured logs are in memory only.
 - Signal replay storage is not implemented.
 - Actions have no Medulla executor or transport.
-- There is no long-running process host, CLI executable, or Svelte Console.
+- There is no long-running process host or CLI executable.
+- Console inspectors beyond the Overview shell and Chat behavior are not yet
+  implemented.
 - There are no provider, model, memory, ROS, or robotics integrations.
 - Bit YAML configuration is not yet loaded into `echo.core.Entity`.
 - There is no character persistence, relationship integration, context builder,
@@ -306,7 +324,7 @@ Nothing. Phase 4 is complete through Phase 4B.
 - Scheduler `periodic` is a priority class, not a recurring timer facility.
 - Signal payloads must already contain JSON-compatible values for `to_json`.
 
-These are roadmap deferrals, not missing Phase 4B acceptance criteria.
+These are roadmap deferrals, not missing Phase 4C acceptance criteria.
 
 ## Architecture decisions
 
@@ -345,6 +363,9 @@ These are roadmap deferrals, not missing Phase 4B acceptance criteria.
 - Each WebSocket owns one bounded service subscription. Disconnect cleanup
   closes and removes it, while socket latency remains outside Runtime
   publication flow.
+- The SvelteKit console is a separate optional development surface. It depends
+  outward on the HTTP/WebSocket adapter; Echo Core has no Node or browser
+  dependency.
 - Signals may affect internal state and drive activation only through explicit,
   validated influence requests linked to retained Signal IDs.
 - Drives influence attention candidate scoring but never authorize Actions.
@@ -363,9 +384,9 @@ These are roadmap deferrals, not missing Phase 4B acceptance criteria.
 
 ## Next task
 
-Stop after Phase 4B. Do not begin Phase 4C without explicit authorization. The
-CLI executable, Svelte Console, providers, persistence, replay, relationships,
-and behavior policy remain deferred.
+Stop after Phase 4C. Do not begin Phase 4D without explicit authorization.
+Detailed Console inspectors, Chat behavior, the CLI executable, providers,
+persistence, replay, relationships, and behavior policy remain deferred.
 
 ## Important files
 
@@ -387,6 +408,10 @@ and behavior policy remain deferred.
 - `src/echo/runtime_events.py` — event categories, subscription envelopes,
   bounded subscriber queues, and non-blocking broker.
 - `src/echo/adapters/fastapi.py` — optional HTTP adapter and app factory.
+- `console/src/routes/+page.svelte` — initial Echo Console layout, navigation,
+  connection lifecycle, and live activity view.
+- `console/src/lib/echo-client.ts` — HTTP status client and WebSocket URL helpers.
+- `console/vite.config.ts` — local HTTP and WebSocket development proxy.
 - `src/echo/entity/attention.py` — attention proposal and retained candidate
   schemas.
 - `src/echo/entity/influence.py` — bounded Signal influence schema.
@@ -418,6 +443,8 @@ and behavior policy remain deferred.
 - `tests/test_fastapi_adapter.py` — HTTP response/error mapping, WebSocket
   streaming lifecycle, slow-client behavior, and optional dependency isolation
   coverage.
+- `console/src/lib/echo-client.test.ts` — frontend API, event URL, and display
+  helper coverage.
 - `docs/RUNTIME_API.md` — stable Phase 3 service, command, subscription, and
   response/error contract.
 - `docs/HTTP_API.md` — Phase 4A HTTP and Phase 4B WebSocket contracts.

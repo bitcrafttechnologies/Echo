@@ -39,6 +39,15 @@ app = create_app(runtime_service)
 The HTTP and `/events` WebSocket contracts are documented in
 `docs/HTTP_API.md`.
 
+The Phase 4C SvelteKit development interface lives in `console/`. With the Echo
+API running on port 8000, start it with:
+
+```console
+cd console
+npm install
+npm run dev
+```
+
 ## Phase 1 example
 
 ```python

@@ -92,9 +92,15 @@ WebSockets, FastAPI, the Console, and the CLI executable are not part of Phase
   subscriptions, with category and backpressure query options.
 - Verified structured Signal, Task, and Action delivery; disconnect cleanup;
   reconnect behavior; filtering; and slow-client isolation.
+- Phase 4C (`0.4.3`): initial Echo Console frontend shell — completed.
+- Added a lightweight SvelteKit interface with Runtime status, API and event
+  connection state, responsive navigation, a main content area, and recent
+  live activity.
+- Connected through the Phase 4A HTTP and Phase 4B WebSocket APIs with
+  retry/offline behavior and intentionally deferred inspector placeholders.
 
-Phase 4 stops after Phase 4B. The Svelte Console, relationship integration, and
-later Phase 4 subphases require separate authorization.
+Phase 4 stops after Phase 4C. Detailed inspectors, Chat behavior, relationship
+integration, and later Phase 4 subphases require separate authorization.
 
 ## Deferred
 

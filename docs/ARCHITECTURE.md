@@ -175,6 +175,13 @@ queue-size, and overflow options are passed directly into
 `RuntimeSubscriptionRequest`; the Runtime still publishes only into bounded
 queues and never waits on socket I/O.
 
+Phase 4C adds a separate SvelteKit development client under `console/`. Its
+default Vite development proxy targets the FastAPI adapter, while optional
+public environment values support direct HTTP and WebSocket endpoints. The
+shell polls Runtime status, maintains a reconnecting event socket, retains a
+small presentation-only event list, and degrades to explicit offline state.
+It introduces no dependency from Echo Core to Node, Svelte, or browser APIs.
+
 ## Boundaries
 
 The implemented kernel, service, command, and subscription layers contain no
