@@ -87,9 +87,14 @@ WebSockets, FastAPI, the Console, and the CLI executable are not part of Phase
   log endpoints with structured service-error responses.
 - Verified endpoint responses and that Echo Core still runs when FastAPI is
   unavailable.
+- Phase 4B (`0.4.2`): WebSocket event streaming — completed.
+- Added a `/events` endpoint backed exclusively by Phase 3 bounded event
+  subscriptions, with category and backpressure query options.
+- Verified structured Signal, Task, and Action delivery; disconnect cleanup;
+  reconnect behavior; filtering; and slow-client isolation.
 
-Phase 4 stops after Phase 4A. WebSockets, the Svelte Console, relationship
-integration, and later Phase 4 subphases require separate authorization.
+Phase 4 stops after Phase 4B. The Svelte Console, relationship integration, and
+later Phase 4 subphases require separate authorization.
 
 ## Deferred
 

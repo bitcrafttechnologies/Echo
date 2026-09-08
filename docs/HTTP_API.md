@@ -2,10 +2,11 @@
 
 ## Scope
 
-Phase 4A exposes the existing `RuntimeServiceProtocol` over HTTP. The adapter
-translates HTTP inputs into the Phase 3 request/query dataclasses and serializes
-their returned snapshots. It does not read from `Runtime`, Entity registries,
-queues, histories, or state dictionaries directly.
+Phase 4A exposes the existing `RuntimeServiceProtocol` over HTTP, and Phase 4B
+adds live WebSocket event streaming. The adapter translates transport inputs
+into the Phase 3 request/query dataclasses and serializes their returned
+snapshots. It does not read from `Runtime`, Entity registries, queues,
+histories, or state dictionaries directly.
 
 The adapter is optional:
 
@@ -41,6 +42,7 @@ app = create_app(runtime_service)
 | `GET` | `/entities/{entity_id}/state` | `get_entity_state()` |
 | `PATCH` | `/entities/{entity_id}/state` | `set_allowed_state_values()` |
 | `GET` | `/logs` | `get_logs()` |
+| `WS` | `/events` | `subscribe_events()` |
 
 List filters use the names in `docs/RUNTIME_API.md`. Action type is the `type`
 query parameter; Task and Action lifecycle filters use `status`. Limits default
@@ -50,6 +52,27 @@ Signal injection accepts `type`, optional `id`, `source`, `timestamp`,
 `payload`, `metadata`, and `priority`. State writes accept an object shaped as
 `{"values": {...}}` and remain constrained by the service's per-Entity
 allowlist.
+
+## WebSocket event stream
+
+`/events` sends future `RuntimeSubscriptionEvent.to_dict()` values as JSON. A
+message contains its monotonic sequence, category, and structured Runtime log
+event. Reconnecting creates a new future-only subscription; retained history
+remains available through the HTTP inspection endpoints.
+
+Optional query parameters map directly to `RuntimeSubscriptionRequest`:
+
+| Parameter | Default | Meaning |
+| --- | --- | --- |
+| repeated `category` | `logs` | One or more Phase 3 event categories. |
+| `max_queue_size` | `100` | Positive per-client pending-event bound. |
+| `backpressure` | `drop_oldest` | `drop_oldest` or `drop_newest`. |
+
+For example, `/events?category=signal.received&category=task.lifecycle` streams
+only Signal receipt and Task lifecycle events. Each client owns an isolated,
+bounded Phase 3 subscription. Runtime publication never waits for network I/O;
+a slow client drops events according to its requested policy. Disconnecting
+always closes and removes that client's subscription.
 
 ## Errors
 
@@ -71,5 +94,5 @@ state updates to `403`, non-cancellable Tasks to `409`, failed Signal handling
 and invalid character influence to `422`, and unclassified service errors to
 `500`.
 
-WebSockets, event-stream transport, authentication, process hosting, the
-Svelte Console, and relationship APIs are not part of Phase 4A.
+Authentication, process hosting, the Svelte Console, and relationship APIs are
+not part of Phase 4B.

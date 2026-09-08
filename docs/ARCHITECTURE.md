@@ -167,6 +167,14 @@ to HTTP status codes without introducing HTTP concepts into the service or
 kernel. The package root never imports the adapter, so FastAPI is not required
 to import or run Echo Core.
 
+Phase 4B maps one WebSocket connection to one Phase 3 event subscription. A
+send loop serializes the existing structured event envelope while an
+independent receive loop detects disconnects. Both paths close the subscription
+in guaranteed cleanup, removing it from the broker. Per-client category,
+queue-size, and overflow options are passed directly into
+`RuntimeSubscriptionRequest`; the Runtime still publishes only into bounded
+queues and never waits on socket I/O.
+
 ## Boundaries
 
 The implemented kernel, service, command, and subscription layers contain no

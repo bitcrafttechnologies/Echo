@@ -36,7 +36,8 @@ from echo.adapters.fastapi import create_app
 app = create_app(runtime_service)
 ```
 
-The endpoint contract is documented in `docs/HTTP_API.md`.
+The HTTP and `/events` WebSocket contracts are documented in
+`docs/HTTP_API.md`.
 
 ## Phase 1 example
 

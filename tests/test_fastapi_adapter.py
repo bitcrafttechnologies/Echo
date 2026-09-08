@@ -15,7 +15,25 @@ try:
 except ImportError:
     TestClient = None
 
-from echo import Entity, Runtime, RuntimeService, Signal
+from echo import (
+    EmitSignalRequest,
+    Entity,
+    Runtime,
+    RuntimeService,
+    RuntimeSubscriptionRequest,
+    Signal,
+)
+
+
+class TrackingRuntimeService(RuntimeService):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.created_subscriptions = []
+
+    def subscribe_events(self, request=None):
+        subscription = super().subscribe_events(request)
+        self.created_subscriptions.append(subscription)
+        return subscription
 
 
 @unittest.skipIf(TestClient is None, "install the test extra to test the HTTP adapter")
@@ -25,14 +43,14 @@ class FastAPIAdapterTests(unittest.TestCase):
 
         self.bit = Entity("bit", state={"mode": "idle", "private": "fixed"})
         self.runtime = Runtime([self.bit])
-        self.service = RuntimeService(
+        self.service = TrackingRuntimeService(
             self.runtime,
             allowed_state_keys={"bit": {"mode"}},
         )
 
         @self.bit.on("observe")
         async def observe(signal: Signal):
-            self.runtime.update_entity_state("bit", {"mode": "observed"})
+            self.bit.state["mode"] = "observed"
             return await self.bit.action("remember", value=signal.payload["value"])
 
         self.client = TestClient(create_app(self.service))
@@ -152,6 +170,136 @@ class FastAPIAdapterTests(unittest.TestCase):
         conflict = self.client.post(f"/tasks/{completed}/cancel")
         self.assertEqual(conflict.status_code, 409)
         self.assertEqual(conflict.json()["error"]["code"], "task_not_cancellable")
+
+    def test_websocket_streams_signal_task_and_action_events(self) -> None:
+        with self.client.websocket_connect("/events") as websocket:
+            emitted = self.client.post(
+                "/signals",
+                json={"type": "observe", "payload": {"value": 9}},
+            )
+            self.assertEqual(emitted.status_code, 201)
+            signal_id = emitted.json()["id"]
+            events = [websocket.receive_json() for _ in range(8)]
+
+        self.assertEqual(
+            [event["sequence"] for event in events],
+            sorted(event["sequence"] for event in events),
+        )
+        self.assertTrue(
+            all(event["event"]["signal_id"] == signal_id for event in events)
+        )
+        self.assertEqual(
+            {event["category"] for event in events},
+            {
+                "signal.received",
+                "signal.routed",
+                "task.lifecycle",
+                "action.lifecycle",
+                "state.changed",
+            },
+        )
+        self.assertEqual(
+            [event["event"]["event_type"] for event in events],
+            [
+                "signal.received",
+                "signal.routed",
+                "task.created",
+                "task.status_changed",
+                "action.created",
+                "action.executed",
+                "task.status_changed",
+                "state.changed",
+            ],
+        )
+        self.assertTrue(self.service.created_subscriptions[-1].closed)
+
+    def test_websocket_filter_disconnect_and_reconnect(self) -> None:
+        path = "/events?category=signal.received&max_queue_size=2"
+        with self.client.websocket_connect(path) as first:
+            first_signal = self.client.post(
+                "/signals", json={"type": "observe", "payload": {"value": 1}}
+            ).json()
+            first_event = first.receive_json()
+
+        first_subscription = self.service.created_subscriptions[-1]
+        self.assertTrue(first_subscription.closed)
+        self.assertEqual(self.runtime._event_broker.subscriber_count, 0)
+        self.assertEqual(first_event["category"], "signal.received")
+        self.assertEqual(first_event["event"]["signal_id"], first_signal["id"])
+
+        while_disconnected = self.client.post(
+            "/signals", json={"type": "observe", "payload": {"value": 2}}
+        )
+        self.assertEqual(while_disconnected.status_code, 201)
+        self.assertTrue(self.runtime.running)
+
+        with self.client.websocket_connect(path) as second:
+            second_signal = self.client.post(
+                "/signals", json={"type": "observe", "payload": {"value": 3}}
+            ).json()
+            second_event = second.receive_json()
+
+        second_subscription = self.service.created_subscriptions[-1]
+        self.assertIsNot(first_subscription, second_subscription)
+        self.assertTrue(second_subscription.closed)
+        self.assertEqual(self.runtime._event_broker.subscriber_count, 0)
+        self.assertEqual(second_event["category"], "signal.received")
+        self.assertEqual(second_event["event"]["signal_id"], second_signal["id"])
+        self.assertNotEqual(second_event["event"]["signal_id"], first_signal["id"])
+
+        after_disconnect = self.client.post(
+            "/signals", json={"type": "observe", "payload": {"value": 4}}
+        )
+        self.assertEqual(after_disconnect.status_code, 201)
+        self.assertTrue(self.runtime.running)
+
+    def test_slow_websocket_does_not_block_runtime_publication(self) -> None:
+        from echo.adapters.fastapi import _stream_events
+
+        async def exercise() -> None:
+            send_started = asyncio.Event()
+            release_send = asyncio.Event()
+            disconnect = asyncio.Event()
+
+            class SlowWebSocket:
+                async def send_json(self, event) -> None:
+                    send_started.set()
+                    await release_send.wait()
+
+                async def receive(self):
+                    await disconnect.wait()
+                    return {"type": "websocket.disconnect"}
+
+            subscription = self.service.subscribe_events(
+                RuntimeSubscriptionRequest(
+                    categories=("signal.received",),
+                    max_queue_size=2,
+                )
+            )
+            streaming = asyncio.create_task(
+                _stream_events(SlowWebSocket(), subscription)
+            )
+
+            await self.service.emit_signal(
+                EmitSignalRequest(signal=Signal(type="slow.first"))
+            )
+            await send_started.wait()
+            for index in range(5):
+                await self.service.emit_signal(
+                    EmitSignalRequest(signal=Signal(type=f"slow.{index}"))
+                )
+
+            self.assertTrue(self.runtime.running)
+            self.assertEqual(subscription.pending_count, 2)
+            self.assertEqual(subscription.dropped_count, 3)
+
+            disconnect.set()
+            release_send.set()
+            await streaming
+            self.assertTrue(subscription.closed)
+            self.assertEqual(self.runtime._event_broker.subscriber_count, 0)
+
+        asyncio.run(exercise())
 
 
 class FastAPIIsolationTests(unittest.TestCase):

@@ -2,11 +2,12 @@
 
 ## Current implementation
 
-Echo Phase 4A consists of a minimal, standard-library Python kernel plus an
-optional FastAPI adapter. The documented, transport-agnostic runtime contract,
-structured developer commands, and live event subscriptions remain the only
-control boundary used by the HTTP layer. Phase 3 character state, drives,
-Signal influence, and attention candidates are implemented in memory.
+Echo Phase 4B consists of a minimal, standard-library Python kernel plus an
+optional FastAPI HTTP and WebSocket adapter. The documented,
+transport-agnostic runtime contract, structured developer commands, and live
+event subscriptions remain the only control boundary used by the transport
+layer. Phase 3 character state, drives, Signal influence, and attention
+candidates are implemented in memory.
 
 The `0.1-amendment/character_plan` branch also records the persistent character
 architecture and adds its provider-independent base vocabulary. Phase 2 now
@@ -42,9 +43,10 @@ The public package exports:
 - `InternalState`, `DriveProfile`, `SignalInfluence`, `AttentionProposal`, and
   `AttentionCandidate`
 
-The optional `echo.adapters.fastapi` module exports `create_app()`. It is not
-imported by the public package root, so Echo Core still imports and runs when
-FastAPI is unavailable.
+The optional `echo.adapters.fastapi` module exports `create_app()`, providing
+HTTP inspection/control and `/events` WebSocket streaming. It is not imported
+by the public package root, so Echo Core still imports and runs when FastAPI is
+unavailable.
 
 The working runtime path is:
 
@@ -119,6 +121,15 @@ Action list/inspection, Entity state reads and allowlisted writes, and log
 queries. Routes translate inputs into existing service dataclasses and
 serialize service results; they do not access Runtime internals. Domain errors
 retain their stable codes and details in structured HTTP error responses.
+
+Each `/events` client receives a private subscription created through
+`RuntimeService.subscribe_events()`. Events use the existing structured Phase 3
+envelope. Repeated `category` query parameters provide basic filtering, while
+`max_queue_size` and `backpressure` configure the existing bounded queue.
+Socket writes consume the queue in a separate coroutine from Runtime event
+publication, so a slow client cannot block Echo. A concurrent receive loop
+detects disconnects; guaranteed cleanup closes and removes the subscription.
+Reconnects create fresh future-only subscriptions.
 
 `SignalHistory` defaults to 1,000 entries and can be configured through
 `Runtime(signal_history_size=...)`. It stores safe snapshots of each Signal's
@@ -271,18 +282,23 @@ execution remains deferred to Medulla.
   coverage.
 - Phase 4A: subprocess verification that Echo Core runs while FastAPI imports
   are blocked.
+- Phase 4B (`0.4.2`): `/events` WebSocket streaming backed by Phase 3 event
+  subscriptions.
+- Phase 4B: structured live Signal, Task, Action, state, Runtime, log, and error
+  envelopes with optional category filtering.
+- Phase 4B: clean disconnect removal, future-only reconnect behavior, bounded
+  slow-client backpressure, and runtime-isolation coverage.
 
 ## In progress
 
-Nothing. Phase 4 is complete through Phase 4A.
+Nothing. Phase 4 is complete through Phase 4B.
 
 ## Known issues
 
 - Entity state, runtime histories, and structured logs are in memory only.
 - Signal replay storage is not implemented.
 - Actions have no Medulla executor or transport.
-- There is no long-running process host, CLI executable, WebSocket adapter, or
-  Console.
+- There is no long-running process host, CLI executable, or Svelte Console.
 - There are no provider, model, memory, ROS, or robotics integrations.
 - Bit YAML configuration is not yet loaded into `echo.core.Entity`.
 - There is no character persistence, relationship integration, context builder,
@@ -290,7 +306,7 @@ Nothing. Phase 4 is complete through Phase 4A.
 - Scheduler `periodic` is a priority class, not a recurring timer facility.
 - Signal payloads must already contain JSON-compatible values for `to_json`.
 
-These are roadmap deferrals, not missing Phase 4A acceptance criteria.
+These are roadmap deferrals, not missing Phase 4B acceptance criteria.
 
 ## Architecture decisions
 
@@ -326,6 +342,9 @@ These are roadmap deferrals, not missing Phase 4A acceptance criteria.
   application contract; Runtime coordination and storage stay private.
 - The FastAPI app is created around `RuntimeServiceProtocol`; routes translate
   transport shapes only and never read or mutate Runtime internals.
+- Each WebSocket owns one bounded service subscription. Disconnect cleanup
+  closes and removes it, while socket latency remains outside Runtime
+  publication flow.
 - Signals may affect internal state and drive activation only through explicit,
   validated influence requests linked to retained Signal IDs.
 - Drives influence attention candidate scoring but never authorize Actions.
@@ -344,9 +363,9 @@ These are roadmap deferrals, not missing Phase 4A acceptance criteria.
 
 ## Next task
 
-Stop after Phase 4A. Do not begin Phase 4B without explicit authorization.
-WebSockets, the CLI executable, Console, providers, persistence, replay,
-relationships, and behavior policy remain deferred.
+Stop after Phase 4B. Do not begin Phase 4C without explicit authorization. The
+CLI executable, Svelte Console, providers, persistence, replay, relationships,
+and behavior policy remain deferred.
 
 ## Important files
 
@@ -396,11 +415,12 @@ relationships, and behavior policy remain deferred.
 - `tests/test_phase3_character.py` — Phase 3 character composition, influence,
   attention, atomicity, and observability.
 - `tests/test_api_contract.py` — executes the documented contract example.
-- `tests/test_fastapi_adapter.py` — HTTP response, error mapping, and optional
-  dependency isolation coverage.
+- `tests/test_fastapi_adapter.py` — HTTP response/error mapping, WebSocket
+  streaming lifecycle, slow-client behavior, and optional dependency isolation
+  coverage.
 - `docs/RUNTIME_API.md` — stable Phase 3 service, command, subscription, and
   response/error contract.
-- `docs/HTTP_API.md` — Phase 4A endpoint and HTTP error contract.
+- `docs/HTTP_API.md` — Phase 4A HTTP and Phase 4B WebSocket contracts.
 - `examples/runtime_api_contract.py` — executable documented contract example.
 - `docs/ARCHITECTURE.md` — implemented architecture boundary.
 - `docs/CHARACTER_ARCHITECTURE.md` — persistent character design and phased

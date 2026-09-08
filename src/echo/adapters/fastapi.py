@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from typing import Any
 
-from fastapi import FastAPI, Query, Request, status
+from fastapi import FastAPI, Query, Request, WebSocket, WebSocketDisconnect, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -15,6 +16,9 @@ from echo import (
     LogQuery,
     RuntimeServiceError,
     RuntimeServiceProtocol,
+    RuntimeEventSubscription,
+    RuntimeSubscriptionError,
+    RuntimeSubscriptionRequest,
     SetStateValuesRequest,
     Signal,
     SignalQuery,
@@ -74,13 +78,43 @@ def _as_list(values: tuple[Any, ...]) -> list[dict[str, Any]]:
     return [_as_dict(value) for value in values]
 
 
+async def _stream_events(
+    websocket: WebSocket,
+    subscription: RuntimeEventSubscription,
+) -> None:
+    """Forward one bounded subscription while independently watching its peer."""
+
+    async def send_events() -> None:
+        try:
+            async for event in subscription:
+                await websocket.send_json(event.to_dict())
+        except WebSocketDisconnect:
+            subscription.close()
+
+    async def watch_client() -> None:
+        try:
+            while True:
+                message = await websocket.receive()
+                if message["type"] == "websocket.disconnect":
+                    break
+        finally:
+            subscription.close()
+
+    try:
+        async with asyncio.TaskGroup() as tasks:
+            tasks.create_task(send_events())
+            tasks.create_task(watch_client())
+    finally:
+        subscription.close()
+
+
 def create_app(service: RuntimeServiceProtocol) -> FastAPI:
     """Create an HTTP adapter around an existing runtime service."""
 
     if not isinstance(service, RuntimeServiceProtocol):
         raise TypeError("service must implement RuntimeServiceProtocol")
 
-    app = FastAPI(title="Echo Runtime API", version="0.4.1")
+    app = FastAPI(title="Echo Runtime API", version="0.4.2")
 
     @app.exception_handler(RuntimeServiceError)
     async def handle_runtime_service_error(
@@ -214,5 +248,30 @@ def create_app(service: RuntimeServiceProtocol) -> FastAPI:
                 )
             )
         )
+
+    @app.websocket("/events")
+    async def runtime_events(
+        websocket: WebSocket,
+        categories: list[str] = Query(default=["logs"], alias="category"),
+        max_queue_size: int = Query(default=100, ge=1),
+        backpressure: str = Query(default="drop_oldest"),
+    ) -> None:
+        try:
+            subscription = service.subscribe_events(
+                RuntimeSubscriptionRequest(
+                    categories=categories,
+                    max_queue_size=max_queue_size,
+                    backpressure=backpressure,
+                )
+            )
+        except (RuntimeServiceError, RuntimeSubscriptionError) as error:
+            await websocket.close(code=1008, reason=error.message)
+            return
+
+        try:
+            await websocket.accept()
+            await _stream_events(websocket, subscription)
+        finally:
+            subscription.close()
 
     return app
