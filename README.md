@@ -14,3 +14,22 @@ runtime.
 python -m unittest discover -s tests -v
 ```
 
+## Phase 1 example
+
+```python
+from echo import Entity, Runtime, Signal
+
+bit = Entity("bit")
+runtime = Runtime([bit])
+
+@bit.on("battery.low")
+async def battery_low(signal):
+    bit.state["battery"] = signal.payload["percent"]
+    await bit.action("speak", text="I should probably charge soon.")
+
+await runtime.emit(Signal(type="battery.low", payload={"percent": 0.08}))
+```
+
+Awaiting `emit` returns after the signal and all matching handlers have been
+processed. Actions are observable intent records in Phase 1; external execution
+is intentionally deferred.

@@ -41,11 +41,7 @@ class Entity:
         if self._runtime is None:
             raise RuntimeError("entity must be registered with a Runtime")
         action = Action(type=action_type, parameters=parameters)
-        return self._runtime.record_action(
-            action,
-            self,
-            self._runtime._current_task,
-        )
+        return self._runtime.record_action(action, self)
 
     async def act(self, action_type: str, **parameters: Any) -> Action:
         return await self.action(action_type, **parameters)

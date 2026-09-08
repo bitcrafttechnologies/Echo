@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import sys
 import unittest
@@ -78,7 +79,26 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(bit.state["nested"])
         self.assertEqual([signal.type for signal in runtime.signals], ["outer", "inner"])
 
+    async def test_cancelled_dispatch_marks_handler_task_cancelled(self) -> None:
+        bit = Entity("bit")
+        runtime = Runtime([bit])
+        handler_started = asyncio.Event()
+
+        @bit.on("wait")
+        async def wait(signal: Signal) -> None:
+            handler_started.set()
+            await asyncio.Event().wait()
+
+        emission = asyncio.create_task(runtime.emit(Signal(type="wait")))
+        await handler_started.wait()
+        emission.cancel()
+
+        with self.assertRaises(asyncio.CancelledError):
+            await emission
+
+        self.assertEqual(runtime.tasks[0].status, TaskStatus.CANCELLED)
+        self.assertEqual(bit.active_tasks, {})
+
 
 if __name__ == "__main__":
     unittest.main()
-

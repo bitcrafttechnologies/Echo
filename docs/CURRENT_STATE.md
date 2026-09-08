@@ -2,40 +2,129 @@
 
 ## Current implementation
 
-The Phase 1 kernel primitives are connected by an async priority Scheduler and
-Runtime. Awaiting emission dispatches handlers as Tasks and records Actions.
+Echo Phase 1 is a minimal, standard-library Python kernel.
+
+The public package exports:
+
+- `Signal`
+- `Entity`
+- `HandlerRegistry`
+- `Task` and `TaskStatus`
+- `Action`
+- `Scheduler` and `SignalPriority`
+- `Runtime`
+
+The working runtime path is:
+
+```text
+Signal
+  -> priority Scheduler
+  -> Runtime dispatch
+  -> matching Entity handlers
+  -> one Task per handler
+  -> zero or more Actions
+```
+
+`Runtime.emit` is awaited and deterministic. It returns after the emitted
+Signal has been processed. The Runtime keeps in-memory lists of processed
+Signals, Tasks, and Actions for direct inspection.
+
+Entities own an ID, mutable state, currently active Tasks, and their handler
+registry. An Entity registered with a Runtime can create Actions and emit nested
+Signals through simple high-level methods.
+
+Signals include type, source, timezone-aware timestamp, payload, and metadata.
+They serialize to dictionaries and JSON. Domain code can use small typed Signal
+subclasses while preserving the same transport shape.
+
+Tasks implement pending, running, paused, blocked, completed, failed, and
+cancelled states. Their timestamps, owner, priority, context, parent/child IDs,
+result, and error remain observable.
+
+Actions are structured intent records with type, parameters, creation time, and
+optional Entity and Task attribution. Phase 1 records them but does not execute
+them against external systems.
 
 ## Completed
 
-- Phase 0 repository initialization and cleanup.
-- Phase 1A Signal implementation and unit tests.
-- Phase 1B Entity and handler registry implementation and unit tests.
-- Phase 1C Task and Action implementation and unit tests.
-- Phase 1D Scheduler and Runtime implementation and unit tests.
+- Phase 0 (`0.1`): repository initialization and cleanup.
+- Phase 0: Python `src` package and standard-library test setup.
+- Phase 0: architecture, roadmap, decisions, and status documents.
+- Phase 1A (`0.1.1`): Signal validation and serialization.
+- Phase 1A: typed Signal subclass coverage.
+- Phase 1B (`0.1.2`): Entity identity and copied initial state.
+- Phase 1B: explicit ordered handler registry.
+- Phase 1B: string and Signal-class handler matching.
+- Phase 1B: decorator registration without hidden control flow.
+- Phase 1C (`0.1.3`): Task lifecycle and invalid-transition checks.
+- Phase 1C: Task parent/child identity relationships.
+- Phase 1C: structured Action records.
+- Phase 1D (`0.1.4`): stable async priority Scheduler.
+- Phase 1D: Runtime Entity registration and lookup.
+- Phase 1D: handler dispatch, Task creation, and Action collection.
+- Phase 1D: failure recording and propagation.
+- Phase 1D: nested Signal emission.
+- Phase 1E (`0.1.5`): public-API integration coverage.
+- Phase 1E: typed battery signal end-to-end scenario.
+- Phase 1E: one Signal dispatching independently to multiple Entities.
 
 ## In progress
 
-- Phase 1E end-to-end integration tests and final Phase 1 verification.
+Nothing. Phase 1 is complete and work stops here as requested.
 
 ## Known issues
 
-- State is in memory; persistence is deferred.
-- Actions are recorded intent and have no external executor yet.
-- There is no long-running process host; awaited emission is the Phase 1 API.
+- Entity state and runtime history are in memory only.
+- Signal replay storage is not implemented.
+- Actions have no Medulla executor or transport.
+- There is no long-running process host, CLI, HTTP API, or Console.
+- There are no provider, model, memory, ROS, or robotics integrations.
+- Scheduler `periodic` is a priority class, not a recurring timer facility.
+- Signal payloads must already contain JSON-compatible values for `to_json`.
+
+These are roadmap deferrals, not missing Phase 1 acceptance criteria.
 
 ## Architecture decisions
 
-- Scheduler priority is stable FIFO within each priority class.
-- Each Entity handler invocation owns one observable Task record.
-- Nested Entity emission remains in the same structured dispatch call.
+- `Echo_Plan.md` remains the architectural source of truth.
+- Python 3.11+ and the standard library are sufficient for Phase 1.
+- Dataclasses represent kernel records; no schema framework is required yet.
+- `unittest` verifies the project without downloaded test dependencies.
+- The Entity is the public actor abstraction.
+- Decorators only register handlers; the Runtime owns dispatch.
+- Handler registrations accept event names or Signal subclasses.
+- Scheduler ordering is priority first and FIFO within equal priority.
+- Awaited emission is the Phase 1 runtime boundary.
+- One handler invocation maps to one Task.
+- Handler exceptions mark Tasks failed and propagate to the emitter.
+- Actions are recorded intent until Medulla exists.
+- Runtime history is observable but not presented as durable logging.
+- No future-phase packages or empty interfaces are scaffolded.
 
 ## Next task
 
-Add black-box kernel integration coverage and verify the complete Phase 1 API.
+Stop. If explicitly authorized later, begin Phase 2 observability from the
+roadmap without folding it into the Phase 1 kernel.
 
 ## Important files
 
-- `Echo_Plan.md`
-- `src/echo/core/scheduler.py`
-- `src/echo/core/runtime.py`
-- `tests/test_scheduler_runtime.py`
+- `Echo_Plan.md` — authoritative specification.
+- `README.md` — setup and minimal Phase 1 example.
+- `pyproject.toml` — package metadata and Python requirement.
+- `src/echo/__init__.py` — public kernel API.
+- `src/echo/core/signal.py` — Signal representation and serialization.
+- `src/echo/core/entity.py` — Entity public abstraction.
+- `src/echo/core/handlers.py` — explicit handler registration.
+- `src/echo/core/task.py` — Task data and lifecycle transitions.
+- `src/echo/core/action.py` — structured Action intent.
+- `src/echo/core/scheduler.py` — stable priority scheduling.
+- `src/echo/core/runtime.py` — dispatch and coordination.
+- `tests/test_signal.py` — Signal unit tests.
+- `tests/test_entity.py` — Entity and registry unit tests.
+- `tests/test_task_action.py` — Task and Action unit tests.
+- `tests/test_scheduler_runtime.py` — Scheduler and Runtime unit tests.
+- `tests/test_integration.py` — public-API integration tests.
+- `docs/ARCHITECTURE.md` — implemented architecture boundary.
+- `docs/ROADMAP.md` — phase status and deferrals.
+- `docs/DECISIONS.md` — accepted architecture decisions.
+- `docs/CURRENT_STATE.md` — concise handoff record.

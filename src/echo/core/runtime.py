@@ -123,7 +123,10 @@ class Runtime:
                 result = await result
             self._collect_result(result, entity, task)
             task.complete(result)
-        except BaseException as error:
+        except asyncio.CancelledError:
+            task.cancel()
+            raise
+        except Exception as error:
             task.fail(error)
             raise
         finally:
@@ -131,7 +134,14 @@ class Runtime:
             self._current_entity = previous_entity
             self._current_task = previous_task
 
-    def record_action(self, action: Action, entity: Entity, task: Task | None) -> Action:
+    def record_action(
+        self,
+        action: Action,
+        entity: Entity,
+        task: Task | None = None,
+    ) -> Action:
+        if task is None and self._current_entity is entity:
+            task = self._current_task
         if action.entity_id is None:
             action.entity_id = entity.id
         if action.task_id is None and task is not None:
@@ -147,4 +157,3 @@ class Runtime:
             for value in result:
                 if isinstance(value, Action):
                     self.record_action(value, entity, task)
-

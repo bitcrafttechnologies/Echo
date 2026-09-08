@@ -24,6 +24,14 @@ The scheduler and handler registry are small kernel mechanisms, not additional
 domain layers. The runtime coordinates them and keeps observable in-memory
 records of processed signals, tasks, and actions.
 
+`Runtime.emit` is the Phase 1 execution boundary. It places a Signal in the
+Scheduler and processes priority-ordered work through that Signal before
+returning. Each matching handler receives its own Task. A handler may update its
+Entity state, return Actions, call `Entity.action`, or emit another Signal.
+
+The Runtime retains completed Task and Action records for inspection. An
+Entity's `active_tasks` contains only currently executing handler Tasks.
+
 ## Boundaries
 
 Phase 1 contains no LLM, provider routing, persistence, web API, Console, ROS,
@@ -33,10 +41,13 @@ the outside world belongs to the later Medulla boundary.
 The implementation favors dataclasses, `asyncio`, explicit method calls, and
 composition. Decorators are only registration helpers.
 
+Handler matching accepts either a Signal type string or a Signal subclass.
+Class matching uses normal Python `isinstance` behavior, so a base Signal
+handler can observe every Signal while a typed handler remains specific.
+
 ## Dependency direction
 
 Core primitives do not depend on optional infrastructure. `Entity` owns a
 handler registry and can be attached to a `Runtime`; `Runtime` owns a
 `Scheduler` and registered entities. Optional systems added later must depend
 on this kernel rather than redefine it.
-
