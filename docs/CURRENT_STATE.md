@@ -2,7 +2,7 @@
 
 ## Current implementation
 
-Echo Phase 4C consists of a minimal, standard-library Python kernel, an
+Echo Phase 4D consists of a minimal, standard-library Python kernel, an
 optional FastAPI HTTP and WebSocket adapter, and a separate SvelteKit
 development console shell. The documented, transport-agnostic runtime
 contract, structured developer commands, and live event subscriptions remain
@@ -135,11 +135,20 @@ Reconnects create fresh future-only subscriptions.
 The `console/` SvelteKit application provides a responsive Runtime header,
 navigation sidebar, main workspace, separate API and event-stream connection
 states, and a small recent-event view. Initial navigation contains Overview,
-Signals, Tasks, Entity, Logs, and Chat; only the shell and Overview pulse are
-implemented in Phase 4C. The browser client polls `/runtime/status`, connects
-to `/events`, retries with bounded delay, and remains navigable while Echo is
-offline. Local development uses a Vite proxy by default, preserving the
+Signals, Tasks, Entity, Logs, and Chat. Overview and the Signal Inspector are
+implemented through Phase 4D. The browser client polls `/runtime/status`,
+connects to `/events`, retries with bounded delay, and remains navigable while
+Echo is offline. Local development uses a Vite proxy by default, preserving the
 FastAPI adapter as the network boundary.
+
+The Signal Inspector reconciles live `signal.received` envelopes with the
+bounded `/signals` history, supports case-insensitive type and source filters,
+and refreshes a selected Signal through its inspection endpoint. Selection
+shows identity, timestamp, payload, metadata, complete routing result, Task
+IDs, and Action IDs queried by Signal association. Pause/resume controls only
+whether new arrivals enter the visual live list; Runtime processing,
+subscription consumption, and retained history continue normally. Signals
+arriving while paused are counted but not replayed when the view resumes.
 
 `SignalHistory` defaults to 1,000 entries and can be configured through
 `Runtime(signal_history_size=...)`. It stores safe snapshots of each Signal's
@@ -304,10 +313,15 @@ execution remains deferred to Medulla.
 - Phase 4C: HTTP status polling, WebSocket event consumption, reconnect/backoff,
   explicit offline state, client-helper tests, type checks, and production
   build verification.
+- Phase 4D (`0.4.4`): live and retained Signal Inspector UI.
+- Phase 4D: type/source filtering, Signal identity and structured data detail,
+  routing results, and related Task/Action IDs.
+- Phase 4D: pause/resume visual arrivals without stopping subscription
+  consumption, plus live-event, history-loading, and filter tests.
 
 ## In progress
 
-Nothing. Phase 4 is complete through Phase 4C.
+Nothing. Phase 4 is complete through Phase 4D.
 
 ## Known issues
 
@@ -315,8 +329,8 @@ Nothing. Phase 4 is complete through Phase 4C.
 - Signal replay storage is not implemented.
 - Actions have no Medulla executor or transport.
 - There is no long-running process host or CLI executable.
-- Console inspectors beyond the Overview shell and Chat behavior are not yet
-  implemented.
+- Console inspectors beyond Signals and the Overview shell, plus Chat behavior,
+  are not yet implemented.
 - There are no provider, model, memory, ROS, or robotics integrations.
 - Bit YAML configuration is not yet loaded into `echo.core.Entity`.
 - There is no character persistence, relationship integration, context builder,
@@ -324,7 +338,7 @@ Nothing. Phase 4 is complete through Phase 4C.
 - Scheduler `periodic` is a priority class, not a recurring timer facility.
 - Signal payloads must already contain JSON-compatible values for `to_json`.
 
-These are roadmap deferrals, not missing Phase 4C acceptance criteria.
+These are roadmap deferrals, not missing Phase 4D acceptance criteria.
 
 ## Architecture decisions
 
@@ -366,6 +380,8 @@ These are roadmap deferrals, not missing Phase 4C acceptance criteria.
 - The SvelteKit console is a separate optional development surface. It depends
   outward on the HTTP/WebSocket adapter; Echo Core has no Node or browser
   dependency.
+- Signal pause/resume is presentation state only; it never pauses Runtime event
+  publication or creates an implicit replay buffer.
 - Signals may affect internal state and drive activation only through explicit,
   validated influence requests linked to retained Signal IDs.
 - Drives influence attention candidate scoring but never authorize Actions.
@@ -384,9 +400,9 @@ These are roadmap deferrals, not missing Phase 4C acceptance criteria.
 
 ## Next task
 
-Stop after Phase 4C. Do not begin Phase 4D without explicit authorization.
-Detailed Console inspectors, Chat behavior, the CLI executable, providers,
-persistence, replay, relationships, and behavior policy remain deferred.
+Stop after Phase 4D. Do not begin Phase 4E without explicit authorization.
+Remaining Console inspectors, Chat behavior, the CLI executable, providers,
+persistence, Signal replay, relationships, and behavior policy remain deferred.
 
 ## Important files
 
@@ -409,8 +425,11 @@ persistence, replay, relationships, and behavior policy remain deferred.
   bounded subscriber queues, and non-blocking broker.
 - `src/echo/adapters/fastapi.py` — optional HTTP adapter and app factory.
 - `console/src/routes/+page.svelte` — initial Echo Console layout, navigation,
-  connection lifecycle, and live activity view.
-- `console/src/lib/echo-client.ts` — HTTP status client and WebSocket URL helpers.
+  connection lifecycle, live activity, and Signal stream coordination.
+- `console/src/lib/SignalInspector.svelte` — live/history Signal lists, filters,
+  selection detail, and pause/resume controls.
+- `console/src/lib/echo-client.ts` — HTTP clients, event reconciliation,
+  filtering, and display helpers.
 - `console/vite.config.ts` — local HTTP and WebSocket development proxy.
 - `src/echo/entity/attention.py` — attention proposal and retained candidate
   schemas.
@@ -443,8 +462,8 @@ persistence, replay, relationships, and behavior policy remain deferred.
 - `tests/test_fastapi_adapter.py` — HTTP response/error mapping, WebSocket
   streaming lifecycle, slow-client behavior, and optional dependency isolation
   coverage.
-- `console/src/lib/echo-client.test.ts` — frontend API, event URL, and display
-  helper coverage.
+- `console/src/lib/echo-client.test.ts` — frontend API, live Signal, history,
+  filter, event URL, and display helper coverage.
 - `docs/RUNTIME_API.md` — stable Phase 3 service, command, subscription, and
   response/error contract.
 - `docs/HTTP_API.md` — Phase 4A HTTP and Phase 4B WebSocket contracts.

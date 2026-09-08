@@ -182,6 +182,15 @@ shell polls Runtime status, maintains a reconnecting event socket, retains a
 small presentation-only event list, and degrades to explicit offline state.
 It introduces no dependency from Echo Core to Node, Svelte, or browser APIs.
 
+Phase 4D implements Signal inspection entirely in the Console. Retained records
+come from the Phase 4A Signal endpoints; live arrival IDs come from Phase 4B
+structured events and are reconciled with retained snapshots. Type and source
+filters are presentation-only over the fetched bounded history. Selecting a
+Signal refreshes its snapshot and queries Actions by Signal ID, while related
+Task IDs remain part of the existing routing result. Pausing freezes only the
+visual live-arrival list and does not suspend Runtime subscriptions, history,
+or processing. No replay operation is introduced.
+
 ## Boundaries
 
 The implemented kernel, service, command, and subscription layers contain no

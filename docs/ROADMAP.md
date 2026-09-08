@@ -98,8 +98,14 @@ WebSockets, FastAPI, the Console, and the CLI executable are not part of Phase
   live activity.
 - Connected through the Phase 4A HTTP and Phase 4B WebSocket APIs with
   retry/offline behavior and intentionally deferred inspector placeholders.
+- Phase 4D (`0.4.4`): Signal Inspector UI — completed.
+- Added pauseable live Signal arrivals, retained history, type/source filters,
+  and a structured selection detail view.
+- Added Signal identity, payload, metadata, routing outcome, and related
+  Task/Action IDs using existing HTTP and WebSocket APIs; replay remains
+  deferred.
 
-Phase 4 stops after Phase 4C. Detailed inspectors, Chat behavior, relationship
+Phase 4 stops after Phase 4D. Remaining inspectors, Chat behavior, relationship
 integration, and later Phase 4 subphases require separate authorization.
 
 ## Deferred

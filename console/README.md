@@ -1,9 +1,11 @@
 # Echo Console
 
-The Phase 4C console is a lightweight SvelteKit development interface for the
-Echo Runtime API. It includes the application shell, runtime and connection
-status, initial navigation, and a bounded live-event view. Detailed inspectors
-and Chat behavior are intentionally deferred.
+The Echo Console is a lightweight SvelteKit development interface for the Echo
+Runtime API. Phase 4C provides the application shell, runtime and connection
+status, initial navigation, and a bounded live-event view. Phase 4D adds live
+and historical Signal inspection with type/source filters, routing details,
+related work IDs, and pause/resume behavior. Replay and the remaining
+inspectors are intentionally deferred.
 
 ## Development
 

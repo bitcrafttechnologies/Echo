@@ -2,12 +2,18 @@
   import { env } from '$env/dynamic/public';
   import { onMount } from 'svelte';
 
+  import SignalInspector from '$lib/SignalInspector.svelte';
+
   import {
     eventStreamUrl,
+    fetchSignals,
     fetchRuntimeStatus,
     formatUptime,
+    mergeSignals,
+    signalFromEvent,
     type RuntimeEventEnvelope,
-    type RuntimeStatus
+    type RuntimeStatus,
+    type SignalHistoryEntry
   } from '$lib/echo-client';
 
   const navigation = ['Overview', 'Signals', 'Tasks', 'Entity', 'Logs', 'Chat'] as const;
@@ -19,8 +25,15 @@
   let apiState: ConnectionState = 'connecting';
   let socketState: ConnectionState = 'connecting';
   let events: RuntimeEventEnvelope[] = [];
+  let signalHistory: SignalHistoryEntry[] = [];
+  let liveSignals: SignalHistoryEntry[] = [];
+  let signalHistoryLoading = false;
+  let signalHistoryError = '';
+  let signalStreamPaused = false;
+  let pausedSignalCount = 0;
   let lastError = '';
   let reconnect = () => {};
+  let refreshSignals = () => {};
 
   const apiBase = env.PUBLIC_ECHO_API_URL || '/api';
 
@@ -39,6 +52,7 @@
     let socket: WebSocket | null = null;
     let retryTimer: number | undefined;
     let statusTimer: number | undefined;
+    let signalRefreshTimer: number | undefined;
     let retryDelay = 1000;
 
     async function refreshStatus() {
@@ -53,6 +67,25 @@
         runtime = null;
         apiState = 'disconnected';
         lastError = 'Echo Runtime is unavailable. The console will keep trying.';
+      }
+    }
+
+    async function loadSignalHistory() {
+      signalHistoryLoading = true;
+      try {
+        const next = await fetchSignals(window.fetch.bind(window), apiBase);
+        if (!active) return;
+        signalHistory = next;
+        liveSignals = liveSignals.map(
+          (liveSignal) =>
+            next.find((retained) => retained.id === liveSignal.id) ?? liveSignal
+        );
+        signalHistoryError = '';
+      } catch {
+        if (!active) return;
+        signalHistoryError = 'Recent Signal history is unavailable.';
+      } finally {
+        if (active) signalHistoryLoading = false;
       }
     }
 
@@ -79,6 +112,20 @@
         try {
           const event = JSON.parse(message.data) as RuntimeEventEnvelope;
           events = [event, ...events].slice(0, 30);
+          const liveSignal = signalFromEvent(event);
+          if (liveSignal) {
+            if (signalStreamPaused) {
+              pausedSignalCount += 1;
+            } else {
+              liveSignals = mergeSignals(liveSignals, liveSignal, 50);
+            }
+            if (signalRefreshTimer === undefined) {
+              signalRefreshTimer = window.setTimeout(() => {
+                signalRefreshTimer = undefined;
+                void loadSignalHistory();
+              }, 100);
+            }
+          }
         } catch {
           lastError = 'A runtime event could not be read.';
         }
@@ -101,8 +148,10 @@
       void refreshStatus();
       connectEvents();
     };
+    refreshSignals = () => void loadSignalHistory();
 
     void refreshStatus();
+    void loadSignalHistory();
     connectEvents();
     statusTimer = window.setInterval(refreshStatus, 10_000);
 
@@ -110,9 +159,20 @@
       active = false;
       if (retryTimer !== undefined) window.clearTimeout(retryTimer);
       if (statusTimer !== undefined) window.clearInterval(statusTimer);
+      if (signalRefreshTimer !== undefined) window.clearTimeout(signalRefreshTimer);
       socket?.close(1000, 'Console closed');
     };
   });
+
+  function selectSection(section: Section) {
+    activeSection = section;
+    if (section === 'Signals') refreshSignals();
+  }
+
+  function toggleSignalStream() {
+    signalStreamPaused = !signalStreamPaused;
+    if (!signalStreamPaused) pausedSignalCount = 0;
+  }
 
   function eventTime(timestamp: string): string {
     const value = new Date(timestamp);
@@ -155,7 +215,7 @@
         <button
           class:active={activeSection === item}
           aria-current={activeSection === item ? 'page' : undefined}
-          onclick={() => (activeSection = item)}
+          onclick={() => selectSection(item)}
           type="button"
         >
           <span class="nav-index">{String(index + 1).padStart(2, '0')}</span>
@@ -231,6 +291,18 @@
           {/if}
         </section>
       </section>
+    {:else if activeSection === 'Signals'}
+      <SignalInspector
+        {apiBase}
+        history={signalHistory}
+        {liveSignals}
+        historyLoading={signalHistoryLoading}
+        historyError={signalHistoryError}
+        paused={signalStreamPaused}
+        pausedCount={pausedSignalCount}
+        onTogglePause={toggleSignalStream}
+        onRefresh={refreshSignals}
+      />
     {:else}
       <section class="placeholder" aria-labelledby="section-heading">
         <p class="eyebrow">Console section</p>
