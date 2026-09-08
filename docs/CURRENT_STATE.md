@@ -2,37 +2,34 @@
 
 ## Current implementation
 
-The repository contains the source plan, a minimal Python package layout, and
-the persistent project documentation set.
+The repository contains the source plan, project documentation, and a typed,
+timestamped Signal primitive with dictionary and JSON serialization.
 
 ## Completed
 
 - Phase 0 repository initialization and cleanup.
-- Python packaging metadata and ignore rules.
-- Architecture, roadmap, decisions, and status documents.
+- Phase 1A Signal implementation and unit tests.
+- Python packaging metadata and persistent architecture records.
 
 ## In progress
 
-- Nothing. Phase 0 is complete.
+- Phase 1B Entity and handler registry.
 
 ## Known issues
 
-- The Phase 1 kernel is not implemented yet.
+- Signals are in-memory values; persistence and replay storage are deferred.
 
 ## Architecture decisions
 
-- Use a standard-library Python 3.11+ kernel.
-- Create modules only when a current phase requires them.
-- Use `unittest` so verification needs no downloaded packages.
+- Standard-library dataclasses and JSON represent Phase 1 signal data.
+- Domain signals use small typed subclasses without a schema framework.
 
 ## Next task
 
-Implement Phase 1A Signal serialization and typed subclass support.
+Implement explicit handler registration and the Entity public abstraction.
 
 ## Important files
 
-- `Echo_Plan.md`: architectural source of truth.
-- `docs/ARCHITECTURE.md`: implemented architecture boundary.
-- `docs/ROADMAP.md`: phase sequence and deferrals.
-- `docs/DECISIONS.md`: accepted architecture decisions.
-- `docs/CURRENT_STATE.md`: concise handoff status.
+- `Echo_Plan.md`
+- `src/echo/core/signal.py`
+- `tests/test_signal.py`
