@@ -10,6 +10,7 @@ from typing import Any
 from uuid import uuid4
 
 from echo.core.action import Action
+from echo.core.action_history import ActionHistory, ActionHistoryEntry, ActionStatus
 from echo.core.entity import Entity
 from echo.core.runtime_log import (
     InMemoryLogSink,
@@ -24,7 +25,8 @@ from echo.core.signal_history import (
     SignalHistoryEntry,
     SignalRoutingResult,
 )
-from echo.core.task import Task
+from echo.core.task import Task, TaskStatus
+from echo.core.task_history import TaskHistory, TaskHistoryEntry
 
 
 class Runtime:
@@ -37,11 +39,15 @@ class Runtime:
         scheduler: Scheduler | None = None,
         log_sink: LogSink | None = None,
         signal_history_size: int = 1000,
+        task_history_size: int = 1000,
+        action_history_size: int = 1000,
     ) -> None:
         self.id = str(uuid4())
         self.scheduler = scheduler or Scheduler()
         self.log_sink = log_sink or InMemoryLogSink()
         self.signal_history = SignalHistory(max_size=signal_history_size)
+        self.task_history = TaskHistory(max_size=task_history_size)
+        self.action_history = ActionHistory(max_size=action_history_size)
         self.running = False
         self.entities: dict[str, Entity] = {}
         self.signals: list[Signal] = []
@@ -51,6 +57,8 @@ class Runtime:
         self._dispatch_owner: asyncio.Task[Any] | None = None
         self._current_entity: Entity | None = None
         self._current_task: Task | None = None
+        self._current_action_ids: set[str] | None = None
+        self._routing_tasks: dict[str, list[Task]] = {}
         for entity in entities:
             self.register(entity)
         self.start()
@@ -94,6 +102,43 @@ class Runtime:
         source: str | None = None,
     ) -> tuple[SignalHistoryEntry, ...]:
         return self.signal_history.filter(signal_type=signal_type, source=source)
+
+    def latest_tasks(self, limit: int | None = None) -> tuple[TaskHistoryEntry, ...]:
+        return self.task_history.latest(limit)
+
+    def get_task(self, task_id: str) -> TaskHistoryEntry | None:
+        return self.task_history.get(task_id)
+
+    def filter_tasks(
+        self,
+        *,
+        status: TaskStatus | str | None = None,
+    ) -> tuple[TaskHistoryEntry, ...]:
+        return self.task_history.filter(status=status)
+
+    def latest_actions(
+        self,
+        limit: int | None = None,
+    ) -> tuple[ActionHistoryEntry, ...]:
+        return self.action_history.latest(limit)
+
+    def get_action(self, action_id: str) -> ActionHistoryEntry | None:
+        return self.action_history.get(action_id)
+
+    def filter_actions(
+        self,
+        *,
+        action_type: str | None = None,
+        status: ActionStatus | str | None = None,
+        task_id: str | None = None,
+        signal_id: str | None = None,
+    ) -> tuple[ActionHistoryEntry, ...]:
+        return self.action_history.filter(
+            action_type=action_type,
+            status=status,
+            task_id=task_id,
+            signal_id=signal_id,
+        )
 
     async def emit(
         self,
@@ -163,6 +208,7 @@ class Runtime:
         if len(self.signals) > self.signal_history.max_size:
             del self.signals[0]
         self.signal_history.record(signal)
+        self._routing_tasks[signal.id] = []
         entity_ids: list[str] = []
         handler_count = 0
         routing_error: BaseException | None = None
@@ -187,12 +233,7 @@ class Runtime:
             routing_error = error
             raise
         finally:
-            routed_tasks = [
-                task
-                for task in self.tasks
-                if isinstance(task.context.get("signal"), dict)
-                and task.context["signal"].get("id") == signal.id
-            ]
+            routed_tasks = self._routing_tasks.pop(signal.id, [])
             statuses = {task.id: task.status.value for task in routed_tasks}
             if routing_error is not None:
                 status = (
@@ -226,6 +267,10 @@ class Runtime:
             context={"signal": signal.to_dict()},
         )
         self.tasks.append(task)
+        if len(self.tasks) > self.task_history.max_size:
+            del self.tasks[0]
+        self.task_history.record(task)
+        self._routing_tasks[signal.id].append(task)
         self._log(
             RuntimeEventType.TASK_CREATED,
             entity_id=entity.id,
@@ -236,8 +281,10 @@ class Runtime:
         entity.active_tasks[task.id] = task
         previous_entity = self._current_entity
         previous_task = self._current_task
+        previous_action_ids = self._current_action_ids
         self._current_entity = entity
         self._current_task = task
+        self._current_action_ids = set()
         state_before = self._copy_state(entity.state)
         task.start()
         self._log_task_status(task, signal, "pending")
@@ -272,6 +319,7 @@ class Runtime:
             entity.active_tasks.pop(task.id, None)
             self._current_entity = previous_entity
             self._current_task = previous_task
+            self._current_action_ids = previous_action_ids
 
     def record_action(
         self,
@@ -285,14 +333,21 @@ class Runtime:
             action.entity_id = entity.id
         if action.task_id is None and task is not None:
             action.task_id = task.id
-        is_new = all(existing.id != action.id for existing in self.actions)
+        is_new = action.id not in self.action_history
+        if self._current_action_ids is not None:
+            is_new = is_new and action.id not in self._current_action_ids
         if is_new:
             self.actions.append(action)
+            if len(self.actions) > self.action_history.max_size:
+                del self.actions[0]
             signal_id = None
             if task is not None:
                 signal_data = task.context.get("signal", {})
                 if isinstance(signal_data, dict):
                     signal_id = signal_data.get("id")
+            self.action_history.record(action, signal_id=signal_id)
+            if self._current_action_ids is not None:
+                self._current_action_ids.add(action.id)
             metadata = {
                 "action_type": action.type,
                 "parameters": action.parameters.copy(),
@@ -305,6 +360,7 @@ class Runtime:
                 action_id=action.id,
                 metadata=metadata,
             )
+            self.action_history.mark_executed(action.id)
             self._log(
                 RuntimeEventType.ACTION_EXECUTED,
                 entity_id=action.entity_id,

@@ -2,8 +2,8 @@
 
 ## Current implementation
 
-Echo Phase 2B is a minimal, standard-library Python kernel with structured
-runtime observability and bounded Signal history.
+Echo Phase 2C is a minimal, standard-library Python kernel with structured
+runtime observability and bounded Signal, Task, and Action histories.
 
 The `0.1-amendment/character_plan` branch also records the persistent character
 architecture and adds its provider-independent base vocabulary. These types,
@@ -21,6 +21,8 @@ The public package exports:
 - `Runtime`
 - `RuntimeLogEvent`, `RuntimeEventType`, `LogSink`, and `InMemoryLogSink`
 - `SignalHistory`, `SignalHistoryEntry`, and `SignalRoutingResult`
+- `TaskHistory` and `TaskHistoryEntry`
+- `ActionHistory`, `ActionHistoryEntry`, and `ActionStatus`
 
 The working runtime path is:
 
@@ -34,8 +36,8 @@ Signal
 ```
 
 `Runtime.emit` is awaited and deterministic. It returns after the emitted
-Signal has been processed. The Runtime keeps in-memory Tasks and Actions for
-direct inspection and a bounded list of recent Signal objects for compatibility.
+Signal has been processed. The Runtime keeps bounded compatibility lists of
+recent Signal, Task, and Action objects alongside their read APIs.
 
 `SignalHistory` defaults to 1,000 entries and can be configured through
 `Runtime(signal_history_size=...)`. It stores safe snapshots of each Signal's
@@ -44,6 +46,18 @@ the routing outcome, matched Entity IDs, attempted handler count, Task IDs and
 statuses, and any processing error. Queries return newest entries first and
 support limits, ID lookup, and filtering by type and source. Unknown or evicted
 IDs return `None`; the oldest entry is evicted first when capacity is exceeded.
+
+`TaskHistory` retains bounded references to the live Task objects rather than
+duplicating their mutable state. Queries materialize safe read snapshots with
+identity, name, owner, status, priority, lifecycle timestamps, parent/children,
+associated Signal, result, and error. Completed and failed Tasks remain
+inspectable until predictable oldest-first eviction.
+
+`ActionHistory` records Action creation and execution at the Runtime intent
+boundary. Its snapshots include creation and execution times, lifecycle status,
+parameters, associated Entity/Task/Signal IDs, and result or error. Task and
+Action capacities default to 1,000 and are independently configurable through
+`task_history_size` and `action_history_size`.
 
 Every Runtime uses a replaceable `LogSink` and defaults to an
 `InMemoryLogSink`. Structured, timestamped events cover Signal receipt and
@@ -109,10 +123,16 @@ execution remains deferred to Medulla.
   eviction.
 - Phase 2B: structured routing results for handled, unhandled, failed, and
   cancelled processing.
+- Phase 2C (`0.2.3`): bounded Task and Action lifecycle histories.
+- Phase 2C: reference-backed Task inspection across live, completed, and failed
+  states without duplicating mutable Task state.
+- Phase 2C: Action creation/execution timestamps, status, associations, result,
+  and error inspection.
+- Phase 2C: clean latest, ID, and filtered queries with oldest-first eviction.
 
 ## In progress
 
-Nothing. Phase 2B is complete. Later Phase 2 work has not begun.
+Nothing. Phase 2C is complete. Later Phase 2 work has not begun.
 
 ## Known issues
 
@@ -128,12 +148,12 @@ Nothing. Phase 2B is complete. Later Phase 2 work has not begun.
 - Scheduler `periodic` is a priority class, not a recurring timer facility.
 - Signal payloads must already contain JSON-compatible values for `to_json`.
 
-These are roadmap deferrals, not missing Phase 2B acceptance criteria.
+These are roadmap deferrals, not missing Phase 2C acceptance criteria.
 
 ## Architecture decisions
 
 - `Echo_Plan.md` remains the architectural source of truth.
-- Python 3.11+ and the standard library are sufficient through Phase 2B.
+- Python 3.11+ and the standard library are sufficient through Phase 2C.
 - Dataclasses represent kernel records; no schema framework is required yet.
 - `unittest` verifies the project without downloaded test dependencies.
 - The Entity is the public actor abstraction.
@@ -148,6 +168,9 @@ These are roadmap deferrals, not missing Phase 2B acceptance criteria.
 - Sink failures never alter Runtime control flow.
 - Signal history owns copied snapshots, is bounded independently per Runtime,
   and evicts in processing order.
+- Task history references live Tasks and creates snapshots only when read.
+- Action history adds lifecycle annotations without changing the Action intent
+  primitive or introducing an external executor.
 - Requested character base modules are concrete, tested value types rather than
   empty interfaces; all other future packages remain unscaffolded.
 - Echo owns Entity continuity; providers return untrusted cognitive proposals.
@@ -156,8 +179,8 @@ These are roadmap deferrals, not missing Phase 2B acceptance criteria.
 
 ## Next task
 
-Begin the next Phase 2 subphase only when explicitly authorized. Phase 2B
-intentionally stops after bounded Signal history; persistence and replay remain
+Begin the next Phase 2 subphase only when explicitly authorized. Phase 2C
+intentionally stops after Task and Action history; persistence and replay remain
 deferred.
 
 ## Important files
@@ -175,6 +198,8 @@ deferred.
 - `src/echo/core/runtime.py` — dispatch and coordination.
 - `src/echo/core/runtime_log.py` — structured events and log sink interface.
 - `src/echo/core/signal_history.py` — bounded Signal snapshots and queries.
+- `src/echo/core/task_history.py` — reference-backed Task lifecycle history.
+- `src/echo/core/action_history.py` — bounded Action lifecycle history.
 - `tests/test_signal.py` — Signal unit tests.
 - `tests/test_entity.py` — Entity and registry unit tests.
 - `tests/test_task_action.py` — Task and Action unit tests.
@@ -182,6 +207,7 @@ deferred.
 - `tests/test_integration.py` — public-API integration tests.
 - `tests/test_runtime_logging.py` — Phase 2A observability coverage.
 - `tests/test_signal_history.py` — Phase 2B Signal history coverage.
+- `tests/test_task_action_history.py` — Phase 2C history coverage.
 - `docs/ARCHITECTURE.md` — implemented architecture boundary.
 - `docs/CHARACTER_ARCHITECTURE.md` — persistent character design and phased
   acceptance criteria.

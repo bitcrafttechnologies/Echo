@@ -47,6 +47,14 @@ the in-memory snapshots by recency, ID, type, and source. Capacity is explicit,
 and insertion order determines oldest-first eviction. There is no persistence
 or replay behavior in this component.
 
+Phase 2C adds independently bounded Task and Action histories. `TaskHistory`
+keeps references to the Task objects already owned by the Runtime, so status
+transitions stay current without a duplicate mutable lifecycle model; reads
+produce isolated snapshots. `ActionHistory` keeps the Action object plus only
+the lifecycle data absent from that primitive: execution time, status,
+Signal association, result, and error. The Runtime's compatibility lists use
+the same bounds as their histories.
+
 ## Boundaries
 
 The implemented kernel contains no LLM, provider routing, persistence, web API,
