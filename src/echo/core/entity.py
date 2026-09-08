@@ -6,6 +6,7 @@ from collections.abc import Callable
 from typing import Any
 
 from echo.core.handlers import Handler, HandlerRegistry, SignalKey
+from echo.core.task import Task
 
 
 class Entity:
@@ -17,6 +18,7 @@ class Entity:
         self.id = entity_id
         self.state: dict[str, Any] = dict(state or {})
         self.handlers = HandlerRegistry()
+        self.active_tasks: dict[str, Task] = {}
 
     def on(self, signal: SignalKey) -> Callable[[Handler], Handler]:
         """Return a decorator that performs ordinary handler registration."""
@@ -28,4 +30,3 @@ class Entity:
 
     def __repr__(self) -> str:
         return f"Entity({self.id!r})"
-
