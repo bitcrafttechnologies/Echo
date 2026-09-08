@@ -10,7 +10,7 @@ from typing import Any, Protocol, runtime_checkable
 from echo.core.action_history import ActionHistoryEntry, ActionStatus
 from echo.core.inspection import json_safe
 from echo.core.runtime import Runtime
-from echo.core.runtime_log import RuntimeEventType
+from echo.core.runtime_log import RuntimeEventType, RuntimeLogSeverity
 from echo.core.scheduler import SignalPriority
 from echo.core.signal import Signal
 from echo.core.signal_history import SignalHistoryEntry
@@ -18,6 +18,7 @@ from echo.core.task import TaskStatus
 from echo.core.task_history import TaskHistoryEntry
 from echo.entity.attention import AttentionCandidate
 from echo.entity.influence import SignalInfluence
+from echo.entity.relationships import RelationshipState
 from echo.runtime_events import (
     InvalidSubscriptionError,
     RuntimeEventSubscription,
@@ -165,6 +166,7 @@ class SetStateValuesRequest:
 class LogQuery:
     limit: int | None = 100
     event_type: RuntimeEventType | str | None = None
+    severity: RuntimeLogSeverity | str | None = None
     entity_id: str | None = None
     signal_id: str | None = None
     task_id: str | None = None
@@ -237,6 +239,14 @@ class RuntimeServiceProtocol(Protocol):
     def get_entities(self) -> tuple[EntityResult, ...]: ...
 
     def inspect_entity(self, entity_id: str) -> EntityResult: ...
+
+    def get_relationships(
+        self, entity_id: str
+    ) -> tuple[RelationshipState, ...]: ...
+
+    def inspect_relationship(
+        self, entity_id: str, subject_id: str
+    ) -> RelationshipState: ...
 
     async def emit_signal(
         self,
@@ -336,6 +346,23 @@ class RuntimeService:
     def inspect_entity(self, entity_id: str) -> EntityResult:
         self._require_entity(entity_id)
         return self._entity_result(entity_id)
+
+    def get_relationships(self, entity_id: str) -> tuple[RelationshipState, ...]:
+        return self._require_entity(entity_id).relationships
+
+    def inspect_relationship(
+        self, entity_id: str, subject_id: str
+    ) -> RelationshipState:
+        self._validate_identifier(subject_id, "subject_id")
+        relationship = self._require_entity(entity_id).inspect_relationship(
+            subject_id
+        )
+        if relationship is None:
+            raise ResourceNotFoundError(
+                "relationship not found",
+                details={"entity_id": entity_id, "subject_id": subject_id},
+            )
+        return relationship
 
     async def emit_signal(self, request: EmitSignalRequest) -> SignalHistoryEntry:
         if not isinstance(request, EmitSignalRequest) or not isinstance(
@@ -550,6 +577,7 @@ class RuntimeService:
             events = self._runtime.latest_logs(
                 query.limit,
                 event_type=query.event_type,
+                severity=query.severity,
                 entity_id=query.entity_id,
                 signal_id=query.signal_id,
                 task_id=query.task_id,

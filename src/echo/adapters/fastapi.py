@@ -114,7 +114,7 @@ def create_app(service: RuntimeServiceProtocol) -> FastAPI:
     if not isinstance(service, RuntimeServiceProtocol):
         raise TypeError("service must implement RuntimeServiceProtocol")
 
-    app = FastAPI(title="Echo Runtime API", version="0.4.2")
+    app = FastAPI(title="Echo Runtime API", version="0.4.5")
 
     @app.exception_handler(RuntimeServiceError)
     async def handle_runtime_service_error(
@@ -146,6 +146,18 @@ def create_app(service: RuntimeServiceProtocol) -> FastAPI:
     @app.get("/entities/{entity_id}", tags=["entities"])
     async def inspect_entity(entity_id: str) -> dict[str, Any]:
         return _as_dict(service.inspect_entity(entity_id))
+
+    @app.get("/entities/{entity_id}/relationships", tags=["entities"])
+    async def list_relationships(entity_id: str) -> list[dict[str, Any]]:
+        return _as_list(service.get_relationships(entity_id))
+
+    @app.get(
+        "/entities/{entity_id}/relationships/{subject_id}", tags=["entities"]
+    )
+    async def inspect_relationship(
+        entity_id: str, subject_id: str
+    ) -> dict[str, Any]:
+        return _as_dict(service.inspect_relationship(entity_id, subject_id))
 
     @app.get("/signals", tags=["signals"])
     async def list_signals(
@@ -231,6 +243,7 @@ def create_app(service: RuntimeServiceProtocol) -> FastAPI:
     async def get_logs(
         limit: int | None = Query(default=100, ge=0),
         event_type: str | None = None,
+        severity: str | None = None,
         entity_id: str | None = None,
         signal_id: str | None = None,
         task_id: str | None = None,
@@ -241,6 +254,7 @@ def create_app(service: RuntimeServiceProtocol) -> FastAPI:
                 LogQuery(
                     limit=limit,
                     event_type=event_type,
+                    severity=severity,
                     entity_id=entity_id,
                     signal_id=signal_id,
                     task_id=task_id,

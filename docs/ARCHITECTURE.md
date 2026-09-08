@@ -191,6 +191,22 @@ Task IDs remain part of the existing routing result. Pausing freezes only the
 visual live-arrival list and does not suspend Runtime subscriptions, history,
 or processing. No replay operation is introduced.
 
+Phase 4E completes the initial Console working surface. Task, Entity, log, and
+Chat views call only the Phase 3/4 service HTTP adapter and refresh from normal
+WebSocket activity. Task cancellation uses the existing service operation.
+Chat injects a `UserMessage` through the Signal endpoint and renders only
+Actions associated by that Signal ID, so it has no privileged cognition or
+response path. Structured logs now carry a severity and can be queried by
+severity and event type.
+
+The Phase 4 character slice composes an in-memory `RelationshipStore` into the
+public Entity. Per-subject social state is copied at construction and exposed
+only as detached snapshots through Entity character inspection, explicit
+service methods, HTTP reads, and the Entity Inspector. The inspector keeps
+identity, traits, control state, drives, self-model/embodiment, attention, and
+relationships visibly separate. Relationship learning and persistence remain
+future bounded operations.
+
 ## Boundaries
 
 The implemented kernel, service, command, and subscription layers contain no

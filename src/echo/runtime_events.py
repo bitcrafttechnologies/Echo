@@ -265,6 +265,7 @@ class RuntimeEventBroker:
 def _copy_log_event(event: RuntimeLogEvent) -> RuntimeLogEvent:
     return RuntimeLogEvent(
         event_type=event.event_type,
+        severity=event.severity,
         timestamp=event.timestamp,
         entity_id=event.entity_id,
         signal_id=event.signal_id,

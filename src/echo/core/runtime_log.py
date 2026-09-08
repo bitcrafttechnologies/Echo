@@ -25,11 +25,18 @@ class RuntimeEventType(StrEnum):
     ERROR = "error"
 
 
+class RuntimeLogSeverity(StrEnum):
+    INFO = "info"
+    WARNING = "warning"
+    ERROR = "error"
+
+
 @dataclass(slots=True, kw_only=True, frozen=True)
 class RuntimeLogEvent:
     """One structured observation produced by a Runtime."""
 
     event_type: RuntimeEventType
+    severity: RuntimeLogSeverity = RuntimeLogSeverity.INFO
     timestamp: datetime = field(default_factory=_utc_now)
     entity_id: str | None = None
     signal_id: str | None = None
@@ -37,9 +44,21 @@ class RuntimeLogEvent:
     action_id: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        if isinstance(self.event_type, str):
+            object.__setattr__(self, "event_type", RuntimeEventType(self.event_type))
+        if isinstance(self.severity, str):
+            object.__setattr__(self, "severity", RuntimeLogSeverity(self.severity))
+        if (
+            self.event_type is RuntimeEventType.ERROR
+            and self.severity is RuntimeLogSeverity.INFO
+        ):
+            object.__setattr__(self, "severity", RuntimeLogSeverity.ERROR)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "event_type": self.event_type.value,
+            "severity": self.severity.value,
             "timestamp": self.timestamp.isoformat(),
             "entity_id": self.entity_id,
             "signal_id": self.signal_id,
@@ -72,6 +91,7 @@ class InMemoryLogSink:
         self,
         *,
         event_type: RuntimeEventType | str | None = None,
+        severity: RuntimeLogSeverity | str | None = None,
         entity_id: str | None = None,
         signal_id: str | None = None,
         task_id: str | None = None,
@@ -81,10 +101,13 @@ class InMemoryLogSink:
 
         if isinstance(event_type, str):
             event_type = RuntimeEventType(event_type)
+        if isinstance(severity, str):
+            severity = RuntimeLogSeverity(severity)
         events = (
             event
             for event in self._events
             if (event_type is None or event.event_type is event_type)
+            and (severity is None or event.severity is severity)
             and (entity_id is None or event.entity_id == entity_id)
             and (signal_id is None or event.signal_id == signal_id)
             and (task_id is None or event.task_id == task_id)

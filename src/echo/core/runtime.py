@@ -19,6 +19,7 @@ from echo.core.runtime_log import (
     InMemoryLogSink,
     LogSink,
     RuntimeEventType,
+    RuntimeLogSeverity,
     RuntimeLogEvent,
 )
 from echo.core.scheduler import Scheduler, SignalPriority
@@ -240,6 +241,7 @@ class Runtime:
         limit: int | None = None,
         *,
         event_type: RuntimeEventType | str | None = None,
+        severity: RuntimeLogSeverity | str | None = None,
         entity_id: str | None = None,
         signal_id: str | None = None,
         task_id: str | None = None,
@@ -253,10 +255,13 @@ class Runtime:
             raise ValueError("log limit must be a non-negative integer")
         if isinstance(event_type, str):
             event_type = RuntimeEventType(event_type)
+        if isinstance(severity, str):
+            severity = RuntimeLogSeverity(severity)
         events = (
             event
             for event in reversed(self._log_events)
             if (event_type is None or event.event_type is event_type)
+            and (severity is None or event.severity is severity)
             and (entity_id is None or event.entity_id == entity_id)
             and (signal_id is None or event.signal_id == signal_id)
             and (task_id is None or event.task_id == task_id)
@@ -268,6 +273,7 @@ class Runtime:
         return tuple(
             RuntimeLogEvent(
                 event_type=event.event_type,
+                severity=event.severity,
                 timestamp=event.timestamp,
                 entity_id=event.entity_id,
                 signal_id=event.signal_id,

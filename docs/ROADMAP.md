@@ -104,9 +104,16 @@ WebSockets, FastAPI, the Console, and the CLI executable are not part of Phase
 - Added Signal identity, payload, metadata, routing outcome, and related
   Task/Action IDs using existing HTTP and WebSocket APIs; replay remains
   deferred.
+- Phase 4E (`0.4.5`): remaining first-pass Console views — completed.
+- Added active/history Task inspection, hierarchy, and confirmed live
+  cancellation; Entity state, handlers, active Tasks, and separated character
+  inspection; and structured log severity/event-type filters.
+- Added Chat as `UserMessage` Signal injection only, with responses sourced
+  from associated Runtime Actions rather than a parallel chat path.
+- Completed the Phase 4 character slice with Entity-owned, detached per-person
+  relationship context and service/HTTP/Console inspection.
 
-Phase 4 stops after Phase 4D. Remaining inspectors, Chat behavior, relationship
-integration, and later Phase 4 subphases require separate authorization.
+Phase 4 stops after Phase 4E. Phase 5 requires separate authorization.
 
 ## Deferred
 
@@ -120,7 +127,8 @@ advanced task behavior remain deferred to the phases defined in the plan.
   completed in memory; durable persistence remains deferred.
 - Phase 3: internal state, drives, Signal influence, and attention candidates —
   completed in memory; durable persistence remains deferred.
-- Phase 4: relationship models and per-person social context.
+- Phase 4: relationship models and per-person social context — completed in
+  memory; durable persistence and learning remain deferred.
 - Phase 5: distinct working, episodic, semantic, preference, and relationship
   memories.
 - Phase 6: retention scoring, consolidation, and learned preferences.

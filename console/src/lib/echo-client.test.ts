@@ -2,12 +2,17 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   eventStreamUrl,
+  cancelTask,
+  fetchLogs,
   fetchRuntimeStatus,
   fetchSignals,
   filterSignals,
   formatUptime,
   mergeSignals,
+  sendUserMessage,
   signalFromEvent,
+  taskDepth,
+  type TaskHistoryEntry,
   type SignalHistoryEntry
 } from './echo-client';
 
@@ -136,5 +141,48 @@ describe('Echo API client', () => {
       history[1]
     ]);
     expect(history).toHaveLength(3);
+  });
+
+  it('calculates Task hierarchy depth and stops safely at cycles', () => {
+    const task = (id: string, parent: string | null): TaskHistoryEntry => ({
+      id, parent, name: id, owner: 'bit', status: 'completed', priority: 0,
+      created_at: '2026-09-08T12:00:00Z', started_at: null, completed_at: null,
+      children: [], result: null, error: null, signal_id: null
+    });
+    const tasks = [task('root', null), task('child', 'root'), task('leaf', 'child')];
+    expect(taskDepth(tasks[2], tasks)).toBe(2);
+    const cycle = [task('a', 'b'), task('b', 'a')];
+    expect(taskDepth(cycle[0], cycle)).toBe(1);
+  });
+
+  it('cancels Tasks through the runtime HTTP operation', async () => {
+    const cancelled = { id: 'task-1', status: 'cancelled' };
+    const fetcher = vi.fn(async () => new Response(JSON.stringify(cancelled), { status: 200 }));
+    await expect(cancelTask(fetcher, 'task-1', '/api')).resolves.toMatchObject(cancelled);
+    expect(fetcher).toHaveBeenCalledWith('/api/tasks/task-1/cancel', {
+      method: 'POST', headers: { accept: 'application/json' }
+    });
+  });
+
+  it('requests structured logs with severity and event type filters', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ events: [] }), { status: 200 }));
+    await expect(fetchLogs(fetcher, '/api', { severity: 'error', eventType: 'error', limit: 25 })).resolves.toEqual([]);
+    expect(fetcher).toHaveBeenCalledWith('/api/logs?limit=25&severity=error&event_type=error', {
+      headers: { accept: 'application/json' }
+    });
+  });
+
+  it('injects chat text only as a UserMessage Signal', async () => {
+    const fetcher = vi.fn(async (_url: string, init?: RequestInit) =>
+      new Response(JSON.stringify(signal({ type: 'UserMessage', payload: { text: 'Hello' } })), { status: 201 })
+    );
+    await sendUserMessage(fetcher as typeof fetch, 'Hello', '/api');
+    expect(fetcher).toHaveBeenCalledWith('/api/signals', {
+      method: 'POST',
+      headers: { accept: 'application/json', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        type: 'UserMessage', source: 'console', payload: { text: 'Hello' }, metadata: { channel: 'console' }
+      })
+    });
   });
 });

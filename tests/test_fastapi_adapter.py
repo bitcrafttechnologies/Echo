@@ -18,6 +18,8 @@ except ImportError:
 from echo import (
     EmitSignalRequest,
     Entity,
+    RelationshipState,
+    RelationshipStore,
     Runtime,
     RuntimeService,
     RuntimeSubscriptionRequest,
@@ -41,7 +43,21 @@ class FastAPIAdapterTests(unittest.TestCase):
     def setUp(self) -> None:
         from echo.adapters.fastapi import create_app
 
-        self.bit = Entity("bit", state={"mode": "idle", "private": "fixed"})
+        self.bit = Entity(
+            "bit",
+            state={"mode": "idle", "private": "fixed"},
+            relationships=RelationshipStore(
+                {
+                    "nathan": RelationshipState(
+                        "nathan",
+                        familiarity=0.7,
+                        trust=0.8,
+                        interaction_count=4,
+                        current_context={"topic": "Echo"},
+                    )
+                }
+            ),
+        )
         self.runtime = Runtime([self.bit])
         self.service = TrackingRuntimeService(
             self.runtime,
@@ -70,6 +86,16 @@ class FastAPIAdapterTests(unittest.TestCase):
         entity = self.client.get("/entities/bit")
         self.assertEqual(entity.status_code, 200)
         self.assertEqual(entity.json()["handlers"]["count"], 1)
+
+        relationships = self.client.get("/entities/bit/relationships")
+        self.assertEqual(relationships.status_code, 200)
+        self.assertEqual(relationships.json()[0]["subject_id"], "nathan")
+        relationship = self.client.get("/entities/bit/relationships/nathan")
+        self.assertEqual(relationship.json()["current_context"], {"topic": "Echo"})
+        self.assertEqual(
+            self.client.get("/entities/bit/relationships/missing").status_code,
+            404,
+        )
 
     def test_signal_task_action_state_and_log_responses(self) -> None:
         emitted = self.client.post(
@@ -129,6 +155,38 @@ class FastAPIAdapterTests(unittest.TestCase):
         self.assertEqual(logs.status_code, 200)
         self.assertGreaterEqual(len(logs.json()["events"]), 2)
 
+        errors = self.client.get("/logs", params={"severity": "error"})
+        self.assertEqual(errors.status_code, 200)
+        self.assertEqual(errors.json()["events"], [])
+        invalid_severity = self.client.get("/logs", params={"severity": "critical"})
+        self.assertEqual(invalid_severity.status_code, 400)
+
+    def test_user_message_uses_normal_signal_task_and_action_routing(self) -> None:
+        @self.bit.on("UserMessage")
+        async def user_message(signal: Signal):
+            return await self.bit.action(
+                "respond", text=f"Echo received: {signal.payload['text']}"
+            )
+
+        emitted = self.client.post(
+            "/signals",
+            json={
+                "type": "UserMessage",
+                "source": "console",
+                "payload": {"text": "Hello"},
+                "metadata": {"channel": "console"},
+            },
+        )
+
+        self.assertEqual(emitted.status_code, 201)
+        body = emitted.json()
+        self.assertEqual(body["routing_result"]["status"], "completed")
+        task_id = body["routing_result"]["task_ids"][0]
+        task = self.client.get(f"/tasks/{task_id}").json()
+        actions = self.client.get("/actions", params={"signal_id": body["id"]}).json()
+        self.assertEqual(task["signal_id"], body["id"])
+        self.assertEqual(actions[0]["task_id"], task_id)
+        self.assertEqual(actions[0]["parameters"]["text"], "Echo received: Hello")
     def test_service_errors_have_stable_http_responses(self) -> None:
         @self.bit.on("broken")
         async def broken(signal: Signal) -> None:

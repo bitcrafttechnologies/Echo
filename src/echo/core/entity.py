@@ -16,6 +16,7 @@ from echo.entity.attention import AttentionCandidate
 from echo.entity.drives import DriveProfile
 from echo.entity.identity import EntityIdentity
 from echo.entity.influence import SignalInfluence
+from echo.entity.relationships import RelationshipState, RelationshipStore
 from echo.entity.self_model import SelfModel
 from echo.entity.state import InternalState
 from echo.entity.traits import TraitProfile
@@ -38,6 +39,7 @@ class Entity:
         internal_state: InternalState | None = None,
         drives: DriveProfile | None = None,
         drive_activations: Mapping[str, float] | None = None,
+        relationships: RelationshipStore | None = None,
     ) -> None:
         if not entity_id:
             raise ValueError("entity id must not be empty")
@@ -64,6 +66,10 @@ class Entity:
             drive_activations, Mapping
         ):
             raise ValueError("drive_activations must be a mapping")
+        if relationships is not None and not isinstance(
+            relationships, RelationshipStore
+        ):
+            raise ValueError("relationships must be a RelationshipStore")
         self._id = entity_id
         self._identity = identity
         self._traits = traits or TraitProfile()
@@ -84,6 +90,9 @@ class Entity:
             for name in self._drives.values
         }
         self._attention_candidates: deque[AttentionCandidate] = deque(maxlen=100)
+        self._relationships = RelationshipStore(
+            dict((relationships or RelationshipStore()).relationships)
+        )
         self.state: dict[str, Any] = dict(state or {})
         self.handlers = HandlerRegistry()
         self.active_tasks: dict[str, Task] = {}
@@ -127,6 +136,15 @@ class Entity:
 
         return tuple(reversed(self._attention_candidates))
 
+    @property
+    def relationships(self) -> tuple[RelationshipState, ...]:
+        """Return detached per-person social-state snapshots."""
+
+        return self._relationships.list()
+
+    def inspect_relationship(self, subject_id: str) -> RelationshipState | None:
+        return self._relationships.get(subject_id)
+
     def inspect_character(self) -> dict[str, Any]:
         """Return detached Entity-owned character state as structured data."""
 
@@ -142,6 +160,7 @@ class Entity:
             "attention_candidates": [
                 candidate.to_dict() for candidate in self.attention_candidates
             ],
+            "relationships": self._relationships.to_dict(),
         }
 
     def _apply_signal_influence(

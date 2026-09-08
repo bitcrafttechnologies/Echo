@@ -64,6 +64,8 @@ the mapping is outside this contract and must not leak back into Echo Core.
 | `get_runtime_status()` | none | `RuntimeStatusResult` | Runtime ID, idle/active/stopped status, uptime. |
 | `get_entities()` | none | `tuple[EntityResult, ...]` | Detached Entity views. |
 | `inspect_entity(entity_id)` | ID | `EntityResult` | State, character, active Task IDs, handlers. |
+| `get_relationships(entity_id)` | ID | Relationship snapshots | Detached per-person social state. |
+| `inspect_relationship(entity_id, subject_id)` | two IDs | `RelationshipState` | One detached per-person context. |
 | `emit_signal(request)` | `EmitSignalRequest` | `SignalHistoryEntry` | Returns after routing completes. |
 | `get_recent_signals(query)` | `SignalQuery` | Signal snapshots | Filter by type/source and limit. |
 | `inspect_signal(signal_id)` | ID | `SignalHistoryEntry` | Includes routing result and linked Tasks. |
@@ -74,7 +76,7 @@ the mapping is outside this contract and must not leak back into Echo Core.
 | `inspect_action(action_id)` | ID | `ActionHistoryEntry` | Detached intent/lifecycle view. |
 | `get_entity_state(entity_id)` | ID | `StateResult` | Ordinary mutable Entity state only. |
 | `set_allowed_state_values(request)` | `SetStateValuesRequest` | `StateResult` | Keys require a constructor-time per-Entity allowlist. |
-| `get_logs(query)` | `LogQuery` | `LogResult` | Newest retained structured observations first. |
+| `get_logs(query)` | `LogQuery` | `LogResult` | Newest retained observations; filter by severity/event type and related IDs. |
 | `subscribe_events(request)` | `RuntimeSubscriptionRequest` | `RuntimeEventSubscription` | Future activity only; see subscriptions below. |
 | `get_character_state(entity_id)` | ID | `CharacterStateResult` | Internal controls, drives, attention candidates. |
 | `get_attention_candidates(entity_id, limit)` | ID, limit | Attention candidates | Newest retained candidates first. |
@@ -92,6 +94,13 @@ An optional `AttentionProposal` identifies a subject, reason, base salience,
 and relevant drives. Active drive contributions affect its final score. The
 result is only an attention candidate: applying influence never creates a Task,
 goal, intention, or Action.
+
+Phase 4 composes a `RelationshipStore` into each Entity. Relationships are
+scoped by subject ID and contain bounded social facts such as familiarity,
+trust, interaction count, communication preferences, interests, boundaries,
+important memory references, and current context. Service reads return
+detached snapshots. Relationship learning and durable persistence remain later
+operations; presentation adapters cannot mutate this state directly.
 
 ## Developer commands
 

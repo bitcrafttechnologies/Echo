@@ -13,6 +13,7 @@ from echo import (
     InMemoryLogSink,
     Runtime,
     RuntimeEventType,
+    RuntimeLogSeverity,
     RuntimeLogEvent,
     Signal,
 )
@@ -96,6 +97,9 @@ class RuntimeLoggingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(error.task_id, runtime.tasks[0].id)
         self.assertEqual(error.metadata["error_type"], "ValueError")
         self.assertEqual(error.metadata["message"], "sensor failed")
+        self.assertEqual(error.severity, RuntimeLogSeverity.ERROR)
+        self.assertEqual(sink.query(severity="error"), (error,))
+        self.assertEqual(error.to_dict()["severity"], "error")
 
     async def test_query_returns_events_in_chronological_order(self) -> None:
         sink = InMemoryLogSink()

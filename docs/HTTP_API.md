@@ -31,6 +31,8 @@ app = create_app(runtime_service)
 | `GET` | `/runtime/status` | `get_runtime_status()` |
 | `GET` | `/entities` | `get_entities()` |
 | `GET` | `/entities/{entity_id}` | `inspect_entity()` |
+| `GET` | `/entities/{entity_id}/relationships` | `get_relationships()` |
+| `GET` | `/entities/{entity_id}/relationships/{subject_id}` | `inspect_relationship()` |
 | `GET` | `/signals` | `get_recent_signals()` |
 | `POST` | `/signals` | `emit_signal()` |
 | `GET` | `/signals/{signal_id}` | `inspect_signal()` |
@@ -45,8 +47,13 @@ app = create_app(runtime_service)
 | `WS` | `/events` | `subscribe_events()` |
 
 List filters use the names in `docs/RUNTIME_API.md`. Action type is the `type`
-query parameter; Task and Action lifecycle filters use `status`. Limits default
-to the underlying service-query defaults and may be zero.
+query parameter; Task and Action lifecycle filters use `status`. Log queries
+accept `severity` and `event_type`. Limits default to the underlying
+service-query defaults and may be zero.
+
+Console Chat uses the existing `POST /signals` endpoint with type
+`UserMessage` and source `console`. There is deliberately no chat response
+endpoint: handlers, Tasks, and Actions follow the ordinary Runtime path.
 
 Signal injection accepts `type`, optional `id`, `source`, `timestamp`,
 `payload`, `metadata`, and `priority`. State writes accept an object shaped as

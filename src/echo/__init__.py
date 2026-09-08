@@ -9,6 +9,7 @@ from echo.core.runtime_log import (
     InMemoryLogSink,
     LogSink,
     RuntimeEventType,
+    RuntimeLogSeverity,
     RuntimeLogEvent,
 )
 from echo.core.scheduler import Scheduler, SignalPriority
@@ -29,6 +30,7 @@ from echo.entity.identity import EntityIdentity
 from echo.entity.attention import AttentionCandidate, AttentionProposal
 from echo.entity.drives import DriveProfile
 from echo.entity.influence import SignalInfluence
+from echo.entity.relationships import RelationshipState, RelationshipStore
 from echo.entity.self_model import SelfModel
 from echo.entity.state import InternalState
 from echo.entity.traits import TraitEvidence, TraitProfile
@@ -132,6 +134,7 @@ __all__ = [
     "ResourceNotFoundError",
     "Runtime",
     "RuntimeEventType",
+    "RuntimeLogSeverity",
     "RuntimeEventCategory",
     "RuntimeEventSubscription",
     "RuntimeLogEvent",
@@ -140,6 +143,8 @@ __all__ = [
     "RuntimeServiceProtocol",
     "RuntimeStatusResult",
     "RuntimeStatusCommand",
+    "RelationshipState",
+    "RelationshipStore",
     "RuntimeSubscriptionError",
     "RuntimeSubscriptionEvent",
     "RuntimeSubscriptionRequest",

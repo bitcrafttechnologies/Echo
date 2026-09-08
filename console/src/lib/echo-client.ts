@@ -42,9 +42,82 @@ export type SignalHistoryEntry = {
 export type ActionHistoryEntry = {
   id: string;
   type: string;
+  created_at: string;
+  execution_time: string | null;
+  status: string;
   signal_id: string | null;
   task_id: string | null;
+  entity_id: string | null;
+  parameters: Record<string, unknown>;
+  result: unknown;
+  error: string | null;
 };
+
+export type TaskHistoryEntry = {
+  id: string;
+  name: string;
+  owner: string;
+  status: string;
+  priority: number;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  parent: string | null;
+  children: string[];
+  result: unknown;
+  error: string | null;
+  signal_id: string | null;
+};
+
+export type RelationshipState = {
+  subject_id: string;
+  familiarity: number;
+  trust: number;
+  interaction_count: number;
+  communication_preferences: Record<string, unknown>;
+  known_interests: string[];
+  boundaries: string[];
+  important_memory_ids: string[];
+  current_context: Record<string, unknown>;
+};
+
+export type EntityInspection = {
+  id: string;
+  state: Record<string, unknown>;
+  character: Record<string, unknown> & {
+    identity?: Record<string, unknown>;
+    traits?: Record<string, unknown>;
+    self_model?: Record<string, unknown>;
+    internal_state?: Record<string, unknown>;
+    drives?: Record<string, unknown>;
+    attention_candidates?: unknown[];
+    relationships?: Record<string, RelationshipState>;
+  };
+  active_task_ids: string[];
+  handlers: {
+    count: number;
+    registrations: Array<{
+      signal_kind: string;
+      signal: string;
+      handler: string;
+    }>;
+  };
+};
+
+export type RuntimeLogEntry = RuntimeEvent & {
+  severity: 'info' | 'warning' | 'error' | string;
+};
+
+async function responseError(response: Response, fallback: string): Promise<Error> {
+  try {
+    const body = (await response.json()) as {
+      error?: { message?: string };
+    };
+    return new Error(body.error?.message || `${fallback} (${response.status})`);
+  } catch {
+    return new Error(`${fallback} (${response.status})`);
+  }
+}
 
 export async function fetchRuntimeStatus(
   fetcher: typeof fetch,
@@ -107,6 +180,153 @@ export async function fetchSignalActions(
     throw new Error(`Related Actions request failed (${response.status})`);
   }
   return (await response.json()) as ActionHistoryEntry[];
+}
+
+export async function fetchActions(
+  fetcher: typeof fetch,
+  apiBase = '/api',
+  filters: { type?: string; status?: string; taskId?: string; signalId?: string; limit?: number } = {}
+): Promise<ActionHistoryEntry[]> {
+  const parameters = new URLSearchParams({ limit: String(filters.limit ?? 100) });
+  if (filters.type) parameters.set('type', filters.type);
+  if (filters.status) parameters.set('status', filters.status);
+  if (filters.taskId) parameters.set('task_id', filters.taskId);
+  if (filters.signalId) parameters.set('signal_id', filters.signalId);
+  const response = await fetcher(
+    `${apiBase.replace(/\/$/, '')}/actions?${parameters.toString()}`,
+    { headers: { accept: 'application/json' } }
+  );
+  if (!response.ok) throw await responseError(response, 'Action history request failed');
+  return (await response.json()) as ActionHistoryEntry[];
+}
+
+export async function fetchTasks(
+  fetcher: typeof fetch,
+  apiBase = '/api',
+  filters: { status?: string; limit?: number } = {}
+): Promise<TaskHistoryEntry[]> {
+  const parameters = new URLSearchParams({ limit: String(filters.limit ?? 100) });
+  if (filters.status) parameters.set('status', filters.status);
+  const response = await fetcher(
+    `${apiBase.replace(/\/$/, '')}/tasks?${parameters.toString()}`,
+    { headers: { accept: 'application/json' } }
+  );
+  if (!response.ok) throw await responseError(response, 'Task history request failed');
+  return (await response.json()) as TaskHistoryEntry[];
+}
+
+export async function fetchTask(
+  fetcher: typeof fetch,
+  taskId: string,
+  apiBase = '/api'
+): Promise<TaskHistoryEntry> {
+  const response = await fetcher(
+    `${apiBase.replace(/\/$/, '')}/tasks/${encodeURIComponent(taskId)}`,
+    { headers: { accept: 'application/json' } }
+  );
+  if (!response.ok) throw await responseError(response, 'Task inspection request failed');
+  return (await response.json()) as TaskHistoryEntry;
+}
+
+export async function cancelTask(
+  fetcher: typeof fetch,
+  taskId: string,
+  apiBase = '/api'
+): Promise<TaskHistoryEntry> {
+  const response = await fetcher(
+    `${apiBase.replace(/\/$/, '')}/tasks/${encodeURIComponent(taskId)}/cancel`,
+    { method: 'POST', headers: { accept: 'application/json' } }
+  );
+  if (!response.ok) throw await responseError(response, 'Task cancellation failed');
+  return (await response.json()) as TaskHistoryEntry;
+}
+
+export const ACTIVE_TASK_STATUSES = new Set(['pending', 'running', 'paused', 'blocked']);
+
+export function taskDepth(task: TaskHistoryEntry, tasks: TaskHistoryEntry[]): number {
+  const byId = new Map(tasks.map((value) => [value.id, value]));
+  const visited = new Set([task.id]);
+  let parentId = task.parent;
+  let depth = 0;
+  while (parentId && !visited.has(parentId)) {
+    visited.add(parentId);
+    depth += 1;
+    parentId = byId.get(parentId)?.parent ?? null;
+  }
+  return depth;
+}
+
+export async function fetchEntities(
+  fetcher: typeof fetch,
+  apiBase = '/api'
+): Promise<EntityInspection[]> {
+  const response = await fetcher(`${apiBase.replace(/\/$/, '')}/entities`, {
+    headers: { accept: 'application/json' }
+  });
+  if (!response.ok) throw await responseError(response, 'Entity list request failed');
+  return (await response.json()) as EntityInspection[];
+}
+
+export async function fetchEntity(
+  fetcher: typeof fetch,
+  entityId: string,
+  apiBase = '/api'
+): Promise<EntityInspection> {
+  const response = await fetcher(
+    `${apiBase.replace(/\/$/, '')}/entities/${encodeURIComponent(entityId)}`,
+    { headers: { accept: 'application/json' } }
+  );
+  if (!response.ok) throw await responseError(response, 'Entity inspection request failed');
+  return (await response.json()) as EntityInspection;
+}
+
+export async function fetchRelationships(
+  fetcher: typeof fetch,
+  entityId: string,
+  apiBase = '/api'
+): Promise<RelationshipState[]> {
+  const response = await fetcher(
+    `${apiBase.replace(/\/$/, '')}/entities/${encodeURIComponent(entityId)}/relationships`,
+    { headers: { accept: 'application/json' } }
+  );
+  if (!response.ok) throw await responseError(response, 'Relationship request failed');
+  return (await response.json()) as RelationshipState[];
+}
+
+export async function fetchLogs(
+  fetcher: typeof fetch,
+  apiBase = '/api',
+  filters: { severity?: string; eventType?: string; limit?: number } = {}
+): Promise<RuntimeLogEntry[]> {
+  const parameters = new URLSearchParams({ limit: String(filters.limit ?? 200) });
+  if (filters.severity) parameters.set('severity', filters.severity);
+  if (filters.eventType) parameters.set('event_type', filters.eventType);
+  const response = await fetcher(
+    `${apiBase.replace(/\/$/, '')}/logs?${parameters.toString()}`,
+    { headers: { accept: 'application/json' } }
+  );
+  if (!response.ok) throw await responseError(response, 'Runtime log request failed');
+  const body = (await response.json()) as { events: RuntimeLogEntry[] };
+  return body.events;
+}
+
+export async function sendUserMessage(
+  fetcher: typeof fetch,
+  text: string,
+  apiBase = '/api'
+): Promise<SignalHistoryEntry> {
+  const response = await fetcher(`${apiBase.replace(/\/$/, '')}/signals`, {
+    method: 'POST',
+    headers: { accept: 'application/json', 'content-type': 'application/json' },
+    body: JSON.stringify({
+      type: 'UserMessage',
+      source: 'console',
+      payload: { text },
+      metadata: { channel: 'console' }
+    })
+  });
+  if (!response.ok) throw await responseError(response, 'Message delivery failed');
+  return (await response.json()) as SignalHistoryEntry;
 }
 
 export function filterSignals(

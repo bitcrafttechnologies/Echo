@@ -106,3 +106,21 @@ drive activation, and attention candidates into Entity. A retained Signal may
 change control state only through an explicit, atomically validated
 `apply_signal_influence` request. Drives contribute to attention scoring;
 attention candidates never directly create or authorize Actions.
+
+## ADR-012: Phase 4 relationships are Entity-owned inspection state
+
+Status: accepted
+
+Each Entity composes a per-subject `RelationshipStore`. Construction copies
+the supplied relationship values and every public service/HTTP view is
+detached, preventing Console inspection from mutating character. Phase 4 adds
+social-state inspection but no inference-owned updates, automatic learning, or
+durable storage.
+
+## ADR-013: Console Chat is a Signal source
+
+Status: accepted
+
+The Console sends text as a `UserMessage` through the ordinary Signal HTTP
+operation. It renders responses only from normal Actions associated with that
+Signal. There is no chat-specific runtime method or response shortcut.

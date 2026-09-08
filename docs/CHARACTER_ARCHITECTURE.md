@@ -232,15 +232,15 @@ coherent slice:
 Configuration files precede runtime loaders so schemas and boundaries can be
 reviewed before persistence and inference make them consequential.
 
-Phases 2 and 3 are implemented in memory. The public Entity composes immutable
+Phases 2, 3, and 4 are implemented in memory. The public Entity composes immutable
 identity and trait snapshots with an embodiment-independent self-model,
 normalized internal state, immutable drive baselines, bounded drive activation,
-and retained attention candidates. Runtime inspection and `RuntimeService`
-expose detached views. Explicit Signal-linked influence requests validate
+retained attention candidates, and per-person relationship state. Runtime
+inspection and `RuntimeService` expose detached views. Explicit Signal-linked influence requests validate
 dimensions atomically, clamp state and activation, and allow drives to affect
 attention scoring without creating Actions. Durable audit storage,
-configuration loading, relationships, memory, behavior policy, and provider
-boundaries remain assigned to later phases.
+configuration loading, relationship learning, memory, behavior policy, and
+provider boundaries remain assigned to later phases.
 
 ## Required tests
 

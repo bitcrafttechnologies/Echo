@@ -2,20 +2,20 @@
 
 ## Current implementation
 
-Echo Phase 4D consists of a minimal, standard-library Python kernel, an
+Echo Phase 4E consists of a minimal, standard-library Python kernel, an
 optional FastAPI HTTP and WebSocket adapter, and a separate SvelteKit
 development console shell. The documented, transport-agnostic runtime
 contract, structured developer commands, and live event subscriptions remain
 the only control boundary used by the transport and presentation layers. Phase
-3 character state, drives, Signal influence, and attention candidates are
-implemented in memory.
+3 character state, drives, Signal influence, and attention candidates, plus
+Phase 4 per-person relationship state, are implemented in memory.
 
 The `0.1-amendment/character_plan` branch also records the persistent character
 architecture and adds its provider-independent base vocabulary. Phase 2 now
 composes identity, traits, and self-model into the Entity. Phase 3 now composes
 internal state, drive baselines and activation, and attention candidates.
-Relationships, Bit configuration loading, and prompts remain scaffolding for
-their later roadmap phases.
+Relationship learning, Bit configuration loading, and prompts remain
+scaffolding for their later roadmap phases.
 
 The public package exports:
 
@@ -26,7 +26,8 @@ The public package exports:
 - `Action`
 - `Scheduler` and `SignalPriority`
 - `Runtime`
-- `RuntimeLogEvent`, `RuntimeEventType`, `LogSink`, and `InMemoryLogSink`
+- `RuntimeLogEvent`, `RuntimeEventType`, `RuntimeLogSeverity`, `LogSink`, and
+  `InMemoryLogSink`
 - `SignalHistory`, `SignalHistoryEntry`, and `SignalRoutingResult`
 - `TaskHistory` and `TaskHistoryEntry`
 - `ActionHistory`, `ActionHistoryEntry`, and `ActionStatus`
@@ -43,6 +44,7 @@ The public package exports:
   subscription errors
 - `InternalState`, `DriveProfile`, `SignalInfluence`, `AttentionProposal`, and
   `AttentionCandidate`
+- `RelationshipState` and `RelationshipStore`
 
 The optional `echo.adapters.fastapi` module exports `create_app()`, providing
 HTTP inspection/control and `/events` WebSocket streaming. It is not imported
@@ -68,8 +70,9 @@ recent Signal, Task, and Action objects alongside their read APIs.
 tests, and network adapters. It exposes runtime status; Entity listing
 and inspection; Signal emission, listing, and inspection; Task listing,
 inspection, and live cancellation; Action listing and inspection; detached
-Entity state reads; explicitly allowlisted state writes; and structured log
-queries. Inputs and outputs are typed where that clarifies the contract.
+Entity state reads; detached relationship inspection; explicitly allowlisted
+state writes; and severity/event-type structured log queries. Inputs and
+outputs are typed where that clarifies the contract.
 Returned state, metadata, and history values are detached from Runtime-owned
 mutable structures. Missing resources, invalid requests, forbidden state
 writes, failed Signal processing, and invalid Task cancellation use structured
@@ -116,12 +119,19 @@ atomically, applies bounded deltas, lets active drives contribute to attention
 scoring, and publishes the change through logs and subscriptions. It never
 creates a Task, goal, intention, or Action.
 
+Each Entity also owns a copied `RelationshipStore` keyed by person/subject ID.
+Social state includes familiarity, trust, interaction count, communication
+preferences, interests, boundaries, important memory references, and current
+context. Entity, service, and HTTP inspection always return detached snapshots;
+learning, mutation policy, and persistence remain deferred.
+
 `create_app(runtime_service)` exposes health, Runtime status, Entity list and
 inspection, Signal emission/list/inspection, Task list/inspection/cancellation,
-Action list/inspection, Entity state reads and allowlisted writes, and log
-queries. Routes translate inputs into existing service dataclasses and
-serialize service results; they do not access Runtime internals. Domain errors
-retain their stable codes and details in structured HTTP error responses.
+Action list/inspection, Entity state reads and allowlisted writes,
+relationship reads, and log queries. Routes translate inputs into existing
+service dataclasses and serialize service results; they do not access Runtime
+internals. Domain errors retain their stable codes and details in structured
+HTTP error responses.
 
 Each `/events` client receives a private subscription created through
 `RuntimeService.subscribe_events()`. Events use the existing structured Phase 3
@@ -134,12 +144,11 @@ Reconnects create fresh future-only subscriptions.
 
 The `console/` SvelteKit application provides a responsive Runtime header,
 navigation sidebar, main workspace, separate API and event-stream connection
-states, and a small recent-event view. Initial navigation contains Overview,
-Signals, Tasks, Entity, Logs, and Chat. Overview and the Signal Inspector are
-implemented through Phase 4D. The browser client polls `/runtime/status`,
-connects to `/events`, retries with bounded delay, and remains navigable while
-Echo is offline. Local development uses a Vite proxy by default, preserving the
-FastAPI adapter as the network boundary.
+states, and a small recent-event view. Overview, Signals, Tasks, Entity, Logs,
+and Chat are implemented through Phase 4E. The browser client polls
+`/runtime/status`, connects to `/events`, retries with bounded delay, and
+remains navigable while Echo is offline. Local development uses a Vite proxy by
+default, preserving the FastAPI adapter as the network boundary.
 
 The Signal Inspector reconciles live `signal.received` envelopes with the
 bounded `/signals` history, supports case-insensitive type and source filters,
@@ -149,6 +158,19 @@ IDs, and Action IDs queried by Signal association. Pause/resume controls only
 whether new arrivals enter the visual live list; Runtime processing,
 subscription consumption, and retained history continue normally. Signals
 arriving while paused are counted but not replayed when the view resumes.
+
+The Task Inspector separates active and terminal history, displays lifecycle
+status and parent/child hierarchy, refreshes exact Task detail, and confirms
+before invoking the existing cancellation endpoint. The Entity Inspector shows
+ordinary state, registered handlers, active Tasks, and distinct identity,
+traits, control state, drives, self-model/embodiment, attention, and per-person
+relationship sections. Logs load the recent structured Runtime record and
+filter through the service by severity and event type.
+
+Chat posts text as a `UserMessage` Signal from source `console`. Its timeline
+shows the retained UserMessage and only Actions associated with that Signal as
+Echo responses. Unhandled messages remain visibly unhandled; there is no
+chat-specific backend, direct handler call, or synthetic response path.
 
 `SignalHistory` defaults to 1,000 entries and can be configured through
 `Runtime(signal_history_size=...)`. It stores safe snapshots of each Signal's
@@ -189,8 +211,9 @@ Every Runtime uses a replaceable `LogSink` and defaults to an
 `InMemoryLogSink`. Structured, timestamped events cover Signal receipt and
 routing; Task creation and status changes; Action creation and runtime
 execution; Entity state changes; Runtime start and stop; and handler errors.
-Events carry the applicable Entity, Signal, Task, and Action IDs plus structured
-metadata. In-memory events can be filtered and are returned chronologically.
+Events carry severity, the applicable Entity, Signal, Task, and Action IDs,
+plus structured metadata. In-memory events can be filtered by severity, event
+type, and causal IDs and are returned chronologically.
 Logging failures are isolated from runtime execution.
 
 Entities own an ID, mutable state, currently active Tasks, and their handler
@@ -318,10 +341,19 @@ execution remains deferred to Medulla.
   routing results, and related Task/Action IDs.
 - Phase 4D: pause/resume visual arrivals without stopping subscription
   consumption, plus live-event, history-loading, and filter tests.
+- Phase 4E (`0.4.5`): Task, Entity, Logs, and Chat first-pass Console views.
+- Phase 4E: active/history Task inspection, hierarchy, exact detail, and
+  confirmed live cancellation through the service endpoint.
+- Phase 4E: distinct ordinary state, handler, active Task, identity, trait,
+  control, drive, self-model/embodiment, attention, and relationship views.
+- Phase 4E: structured severity/event-type log filtering and `UserMessage`
+  Signal Chat with Action-backed responses only.
+- Phase 4E character: Entity-owned per-person relationship state with detached
+  RuntimeService, HTTP, and Console inspection.
 
 ## In progress
 
-Nothing. Phase 4 is complete through Phase 4D.
+Nothing. Phase 4 is complete through Phase 4E.
 
 ## Known issues
 
@@ -329,16 +361,14 @@ Nothing. Phase 4 is complete through Phase 4D.
 - Signal replay storage is not implemented.
 - Actions have no Medulla executor or transport.
 - There is no long-running process host or CLI executable.
-- Console inspectors beyond Signals and the Overview shell, plus Chat behavior,
-  are not yet implemented.
 - There are no provider, model, memory, ROS, or robotics integrations.
 - Bit YAML configuration is not yet loaded into `echo.core.Entity`.
-- There is no character persistence, relationship integration, context builder,
+- There is no character persistence, relationship learning, context builder,
   consolidation service, behavior policy, or character mutation audit store.
 - Scheduler `periodic` is a priority class, not a recurring timer facility.
 - Signal payloads must already contain JSON-compatible values for `to_json`.
 
-These are roadmap deferrals, not missing Phase 4D acceptance criteria.
+These are roadmap deferrals, not missing Phase 4E acceptance criteria.
 
 ## Architecture decisions
 
@@ -382,6 +412,10 @@ These are roadmap deferrals, not missing Phase 4D acceptance criteria.
   dependency.
 - Signal pause/resume is presentation state only; it never pauses Runtime event
   publication or creates an implicit replay buffer.
+- Console Chat is only a Signal source; responses are associated Runtime
+  Actions, never a direct chat backend result.
+- Entity relationship state is scoped per subject, copied at construction, and
+  exposed to the Console only through detached service snapshots.
 - Signals may affect internal state and drive activation only through explicit,
   validated influence requests linked to retained Signal IDs.
 - Drives influence attention candidate scoring but never authorize Actions.
@@ -400,9 +434,9 @@ These are roadmap deferrals, not missing Phase 4D acceptance criteria.
 
 ## Next task
 
-Stop after Phase 4D. Do not begin Phase 4E without explicit authorization.
-Remaining Console inspectors, Chat behavior, the CLI executable, providers,
-persistence, Signal replay, relationships, and behavior policy remain deferred.
+Stop after Phase 4E. Do not begin Phase 5 without explicit authorization.
+The CLI executable, providers, persistence, Signal replay, relationship
+learning, and behavior policy remain deferred.
 
 ## Important files
 
@@ -428,6 +462,13 @@ persistence, Signal replay, relationships, and behavior policy remain deferred.
   connection lifecycle, live activity, and Signal stream coordination.
 - `console/src/lib/SignalInspector.svelte` — live/history Signal lists, filters,
   selection detail, and pause/resume controls.
+- `console/src/lib/TaskInspector.svelte` — active/history Task lists, hierarchy,
+  detail, and cancellation.
+- `console/src/lib/EntityInspector.svelte` — Entity state, handlers, active
+  Tasks, separated character sections, and relationship context.
+- `console/src/lib/LogsView.svelte` — structured severity/event-type log view.
+- `console/src/lib/ChatView.svelte` — UserMessage Signal input and
+  Action-associated responses.
 - `console/src/lib/echo-client.ts` — HTTP clients, event reconciliation,
   filtering, and display helpers.
 - `console/vite.config.ts` — local HTTP and WebSocket development proxy.
@@ -458,6 +499,8 @@ persistence, Signal replay, relationships, and behavior policy remain deferred.
   failure isolation, and subscription validation.
 - `tests/test_phase3_character.py` — Phase 3 character composition, influence,
   attention, atomicity, and observability.
+- `tests/test_phase4_character.py` — Phase 4 relationship composition,
+  detachment, validation, and service inspection.
 - `tests/test_api_contract.py` — executes the documented contract example.
 - `tests/test_fastapi_adapter.py` — HTTP response/error mapping, WebSocket
   streaming lifecycle, slow-client behavior, and optional dependency isolation

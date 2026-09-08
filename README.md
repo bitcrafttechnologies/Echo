@@ -39,7 +39,7 @@ app = create_app(runtime_service)
 The HTTP and `/events` WebSocket contracts are documented in
 `docs/HTTP_API.md`.
 
-The Phase 4C SvelteKit development interface lives in `console/`. With the Echo
+The Phase 4E SvelteKit development interface lives in `console/`. With the Echo
 API running on port 8000, start it with:
 
 ```console
@@ -71,8 +71,9 @@ is intentionally deferred.
 ## Character architecture base
 
 `src/echo/entity/` contains provider-independent base value types for identity,
-traits, internal state, drives, relationships, and the self-model. Phase 2
-composes immutable identity and traits plus the embodiment-independent
-self-model into the public `Entity`; later character slices remain deferred to
-their roadmap phases. Bit remains reference configuration under `entities/bit/`,
-including model guidance under `entities/bit/prompts/`.
+traits, internal state, drives, relationships, and the self-model. Phases 2–4
+compose identity, traits, embodiment-independent self-model, runtime control
+state, drives, attention, and detached per-person social context into the
+public `Entity`; later character slices remain deferred to their roadmap
+phases. Bit remains reference configuration under `entities/bit/`, including
+model guidance under `entities/bit/prompts/`.

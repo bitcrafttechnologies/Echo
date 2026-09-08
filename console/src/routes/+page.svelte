@@ -3,6 +3,10 @@
   import { onMount } from 'svelte';
 
   import SignalInspector from '$lib/SignalInspector.svelte';
+  import TaskInspector from '$lib/TaskInspector.svelte';
+  import EntityInspector from '$lib/EntityInspector.svelte';
+  import LogsView from '$lib/LogsView.svelte';
+  import ChatView from '$lib/ChatView.svelte';
 
   import {
     eventStreamUrl,
@@ -31,6 +35,7 @@
   let signalHistoryError = '';
   let signalStreamPaused = false;
   let pausedSignalCount = 0;
+  let eventRevision = 0;
   let lastError = '';
   let reconnect = () => {};
   let refreshSignals = () => {};
@@ -112,6 +117,7 @@
         try {
           const event = JSON.parse(message.data) as RuntimeEventEnvelope;
           events = [event, ...events].slice(0, 30);
+          eventRevision += 1;
           const liveSignal = signalFromEvent(event);
           if (liveSignal) {
             if (signalStreamPaused) {
@@ -303,13 +309,14 @@
         onTogglePause={toggleSignalStream}
         onRefresh={refreshSignals}
       />
-    {:else}
-      <section class="placeholder" aria-labelledby="section-heading">
-        <p class="eyebrow">Console section</p>
-        <h2 id="section-heading">{activeSection}</h2>
-        <p>The {activeSection.toLowerCase()} inspector is reserved for a later phase.</p>
-        <button type="button" onclick={() => (activeSection = 'Overview')}>Back to overview</button>
-      </section>
+    {:else if activeSection === 'Tasks'}
+      <TaskInspector {apiBase} {eventRevision} />
+    {:else if activeSection === 'Entity'}
+      <EntityInspector {apiBase} {eventRevision} />
+    {:else if activeSection === 'Logs'}
+      <LogsView {apiBase} {eventRevision} />
+    {:else if activeSection === 'Chat'}
+      <ChatView {apiBase} {eventRevision} connected={apiState === 'connected'} />
     {/if}
   </main>
 </div>
@@ -587,8 +594,7 @@
     background: rgba(113, 36, 47, 0.16);
   }
 
-  .offline-notice button,
-  .placeholder button {
+  .offline-notice button {
     padding: 0.55rem 0.8rem;
     border: 1px solid #3a4b5e;
     border-radius: 0.35rem;
@@ -692,25 +698,6 @@
     border: 1px solid #2e615f;
     border-radius: 50%;
     box-shadow: 0 0 0 0.6rem rgba(44, 200, 192, 0.04);
-  }
-
-  .placeholder {
-    display: grid;
-    width: min(100%, 50rem);
-    min-height: calc(100vh - 12rem);
-    margin: 0 auto;
-    place-content: center;
-    justify-items: start;
-  }
-
-  .placeholder h2 {
-    margin: 0.45rem 0 1rem;
-  }
-
-  .placeholder p:not(.eyebrow) {
-    margin-bottom: 1.5rem;
-    color: #8492a3;
-    font-size: 1rem;
   }
 
   @media (max-width: 760px) {
