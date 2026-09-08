@@ -2,10 +2,10 @@
 
 ## Current implementation
 
-Echo Phase 3A is a minimal, standard-library Python kernel with a stable,
-transport-agnostic runtime service API over its in-memory observability layer.
-It retains the Phase 2 persistent-character slice without beginning the later
-Phase 3 character work.
+Echo Phase 3B is a minimal, standard-library Python kernel with stable,
+transport-agnostic runtime service and structured developer-command layers over
+its in-memory observability. It retains the Phase 2 persistent-character slice
+without beginning the later Phase 3 character work.
 
 The `0.1-amendment/character_plan` branch also records the persistent character
 architecture and adds its provider-independent base vocabulary. Phase 2 now
@@ -31,6 +31,8 @@ The public package exports:
   `CharacterMutationDecision`
 - `RuntimeService`, its typed request/query/result objects, and its
   `RuntimeServiceError` domain-error hierarchy
+- `DeveloperCommandDispatcher`, typed command schemas, `CommandResult`, the
+  `DeveloperCommandError` hierarchy, and `parse_developer_command`
 
 The working runtime path is:
 
@@ -62,6 +64,16 @@ Live Task cancellation targets the executing handler and waits for lifecycle
 cleanup, so the returned Task snapshot is already `cancelled`. The Runtime also
 retains a bounded internal read history of log events, allowing service log
 queries to work independently of the configured external `LogSink`.
+
+`DeveloperCommandDispatcher` maps explicit command dataclasses to
+`RuntimeService` calls for runtime status, Entity inspection, Signal listing,
+inspection and injection, Task listing, inspection and cancellation, Action
+listing, Entity state reads and allowlisted writes, and logs. Direct command
+objects are suitable for a future Console; a minimal text parser provides the
+same schemas for a future CLI. Results and failures have structured `to_dict()`
+representations. The parser uses `shlex` for tokenization and `json.loads` for
+object values. It has no dynamic imports, `eval`, `exec`, shell invocation, or
+arbitrary Python execution path.
 
 `SignalHistory` defaults to 1,000 entries and can be configured through
 `Runtime(signal_history_size=...)`. It stores safe snapshots of each Signal's
@@ -185,10 +197,17 @@ execution remains deferred to Medulla.
 - Phase 3A: structured Signal emission, allowlisted state updates, and live
   Task cancellation.
 - Phase 3A: clean domain failures and live-runtime coverage of every operation.
+- Phase 3B (`0.3.2`): typed developer commands resolved exclusively through
+  `RuntimeService`.
+- Phase 3B: minimal CLI-oriented text grammar plus direct Console-oriented
+  command objects.
+- Phase 3B: structured parse, validation, unknown-command, and execution errors.
+- Phase 3B: valid, malformed, live cancellation, and arbitrary-Python rejection
+  tests.
 
 ## In progress
 
-Nothing. Phase 3A is complete and later Phase 3 subphases have not begun.
+Nothing. Phase 3B is complete and later Phase 3 subphases have not begun.
 
 ## Known issues
 
@@ -231,6 +250,8 @@ These are roadmap deferrals, not missing Phase 2 acceptance criteria.
   data and remains independent of transport and presentation frameworks.
 - `RuntimeService` is the stable control boundary; CLI and future network
   adapters depend on it instead of reaching into Runtime-owned structures.
+- Developer commands are closed, typed schemas with explicit dispatch. Text is
+  only a presentation adapter and cannot select arbitrary callables.
 - State writes are denied unless the service is configured with an explicit
   per-Entity key allowlist.
 - Runtime-owned log read history is independent of external sink behavior.
@@ -246,7 +267,7 @@ These are roadmap deferrals, not missing Phase 2 acceptance criteria.
 
 ## Next task
 
-Stop after Phase 3A. Begin the next Phase 3 subphase only when explicitly
+Stop after Phase 3B. Begin the next Phase 3 subphase only when explicitly
 authorized. FastAPI, CLI, providers, persistence, replay, internal character
 state, drives, and attention remain deferred.
 
@@ -265,6 +286,8 @@ state, drives, and attention remain deferred.
 - `src/echo/core/runtime.py` — dispatch and coordination.
 - `src/echo/runtime_service.py` — transport-agnostic runtime service API,
   request/result types, and domain errors.
+- `src/echo/developer_commands.py` — typed developer commands, explicit service
+  dispatcher, minimal text parser, and command errors.
 - `src/echo/core/runtime_log.py` — structured events and log sink interface.
 - `src/echo/core/signal_history.py` — bounded Signal snapshots and queries.
 - `src/echo/core/task_history.py` — reference-backed Task lifecycle history.
@@ -283,6 +306,8 @@ state, drives, and attention remain deferred.
 - `tests/test_phase2_observability.py` — Phase 2 acceptance and character tests.
 - `tests/test_runtime_service.py` — every Phase 3A operation against a live
   Runtime plus domain-error behavior.
+- `tests/test_developer_commands.py` — Phase 3B command dispatch, grammar,
+  validation, cancellation, and arbitrary-execution rejection.
 - `docs/ARCHITECTURE.md` — implemented architecture boundary.
 - `docs/CHARACTER_ARCHITECTURE.md` — persistent character design and phased
   acceptance criteria.

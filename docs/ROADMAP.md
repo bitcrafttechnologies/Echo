@@ -55,9 +55,14 @@ Phase 2 stops here. Phase 3 requires separate authorization.
 - Added structured request/query/result objects and clean domain errors.
 - Added deterministic cancellation of live handler Tasks.
 - Exercised every service operation against a live Runtime.
+- Phase 3B (`0.3.2`): structured developer commands — completed.
+- Added typed command schemas and an explicit dispatcher over `RuntimeService`.
+- Added a minimal `shlex` and JSON text grammar suitable for a future CLI while
+  keeping direct command objects suitable for a future Console.
+- Added structured command errors and arbitrary-Python execution rejection.
 
-Phase 3 stops after Phase 3A pending separate authorization for later
-subphases. FastAPI is not part of Phase 3A.
+Phase 3 stops after Phase 3B pending separate authorization for later
+subphases. FastAPI and the CLI executable are not part of Phase 3B.
 
 ## Deferred
 

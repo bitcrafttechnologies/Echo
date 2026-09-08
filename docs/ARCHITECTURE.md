@@ -98,12 +98,28 @@ Live Task cancellation is coordinated by the Runtime and completes the Task's
 lifecycle before returning. A bounded Runtime-owned log read history keeps API
 log access independent of external sink capabilities.
 
+Phase 3B adds a structured developer-command layer above `RuntimeService`:
+
+```text
+typed command object or minimal text
+  -> closed command schema
+  -> explicit DeveloperCommandDispatcher branch
+  -> RuntimeService operation
+  -> structured CommandResult or command error
+```
+
+This preserves two presentation paths without duplicating runtime behavior:
+Console code can construct command objects directly, while a future CLI can
+use or extend the small text parser. Text parsing is limited to `shlex`
+tokenization and JSON-object decoding. Command names never resolve dynamically
+to Python callables, and there is no `eval`, `exec`, import, or shell path.
+
 ## Boundaries
 
-The implemented kernel and service contain no LLM, provider routing,
-persistence, web API, FastAPI, Console, ROS, or Medulla transport. Actions are
-structured intent records;
-execution against the outside world belongs to the later Medulla boundary.
+The implemented kernel, service, and command layer contain no LLM, provider
+routing, persistence, web API, FastAPI, Console, ROS, or Medulla transport.
+Actions are structured intent records; execution against the outside world
+belongs to the later Medulla boundary.
 The Phase 2A `action.executed` observation identifies execution at the Runtime
 intent boundary, not an external side effect.
 

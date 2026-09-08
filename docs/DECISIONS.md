@@ -64,3 +64,13 @@ allowlists, and stable domain errors. It contains no HTTP or FastAPI concepts.
 The Runtime remains responsible for lifecycle-sensitive operations such as live
 Task cancellation and for retaining readable logs independently of its external
 sink.
+
+## ADR-008: Developer commands use closed schemas and explicit dispatch
+
+Status: accepted
+
+Developer operations are immutable command dataclasses dispatched through
+explicit type branches to `RuntimeService`. A small text parser may create
+those same schemas for CLI use; Console code can construct them directly.
+Parsing is limited to tokenization and JSON data. Command input cannot resolve
+arbitrary functions, import modules, invoke a shell, or execute Python.
