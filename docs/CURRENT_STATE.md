@@ -2,10 +2,11 @@
 
 ## Current implementation
 
-Echo Phase 3D is a minimal, standard-library Python kernel with a documented,
-transport-agnostic runtime contract, structured developer commands, and live
-event subscriptions over its in-memory observability. Phase 3 character state,
-drives, Signal influence, and attention candidates are implemented in memory.
+Echo Phase 4A consists of a minimal, standard-library Python kernel plus an
+optional FastAPI adapter. The documented, transport-agnostic runtime contract,
+structured developer commands, and live event subscriptions remain the only
+control boundary used by the HTTP layer. Phase 3 character state, drives,
+Signal influence, and attention candidates are implemented in memory.
 
 The `0.1-amendment/character_plan` branch also records the persistent character
 architecture and adds its provider-independent base vocabulary. Phase 2 now
@@ -41,6 +42,10 @@ The public package exports:
 - `InternalState`, `DriveProfile`, `SignalInfluence`, `AttentionProposal`, and
   `AttentionCandidate`
 
+The optional `echo.adapters.fastapi` module exports `create_app()`. It is not
+imported by the public package root, so Echo Core still imports and runs when
+FastAPI is unavailable.
+
 The working runtime path is:
 
 ```text
@@ -57,7 +62,7 @@ Signal has been processed. The Runtime keeps bounded compatibility lists of
 recent Signal, Task, and Action objects alongside their read APIs.
 
 `RuntimeService` is the supported programmatic control boundary for CLI,
-tests, and future network adapters. It exposes runtime status; Entity listing
+tests, and network adapters. It exposes runtime status; Entity listing
 and inspection; Signal emission, listing, and inspection; Task listing,
 inspection, and live cancellation; Action listing and inspection; detached
 Entity state reads; explicitly allowlisted state writes; and structured log
@@ -107,6 +112,13 @@ explicit mutation path: it requires a retained Signal, validates all dimensions
 atomically, applies bounded deltas, lets active drives contribute to attention
 scoring, and publishes the change through logs and subscriptions. It never
 creates a Task, goal, intention, or Action.
+
+`create_app(runtime_service)` exposes health, Runtime status, Entity list and
+inspection, Signal emission/list/inspection, Task list/inspection/cancellation,
+Action list/inspection, Entity state reads and allowlisted writes, and log
+queries. Routes translate inputs into existing service dataclasses and
+serialize service results; they do not access Runtime internals. Domain errors
+retain their stable codes and details in structured HTTP error responses.
 
 `SignalHistory` defaults to 1,000 entries and can be configured through
 `Runtime(signal_history_size=...)`. It stores safe snapshots of each Signal's
@@ -251,17 +263,25 @@ execution remains deferred to Medulla.
   candidates composed into Entity and exposed through `RuntimeService`.
 - Phase 3D: atomic influence validation, bounded control changes, drive-weighted
   attention, observability, and no-automatic-Action coverage.
+- Phase 4 base branch (`0.4`) established from completed Phase 3D.
+- Phase 4A (`0.4.1`): optional FastAPI adapter over `RuntimeServiceProtocol`.
+- Phase 4A: health, Runtime, Entity, Signal, Task, Action, state, and log HTTP
+  endpoints.
+- Phase 4A: structured service-error-to-HTTP mapping and endpoint response
+  coverage.
+- Phase 4A: subprocess verification that Echo Core runs while FastAPI imports
+  are blocked.
 
 ## In progress
 
-Nothing. Phase 3 is complete through Phase 3D. Phase 4 has not begun.
+Nothing. Phase 4 is complete through Phase 4A.
 
 ## Known issues
 
 - Entity state, runtime histories, and structured logs are in memory only.
 - Signal replay storage is not implemented.
 - Actions have no Medulla executor or transport.
-- There is no long-running process host, CLI, HTTP API, FastAPI adapter, or
+- There is no long-running process host, CLI executable, WebSocket adapter, or
   Console.
 - There are no provider, model, memory, ROS, or robotics integrations.
 - Bit YAML configuration is not yet loaded into `echo.core.Entity`.
@@ -270,12 +290,13 @@ Nothing. Phase 3 is complete through Phase 3D. Phase 4 has not begun.
 - Scheduler `periodic` is a priority class, not a recurring timer facility.
 - Signal payloads must already contain JSON-compatible values for `to_json`.
 
-These are roadmap deferrals, not missing Phase 3D acceptance criteria.
+These are roadmap deferrals, not missing Phase 4A acceptance criteria.
 
 ## Architecture decisions
 
 - `Echo_Plan.md` remains the architectural source of truth.
-- Python 3.11+ and the standard library are sufficient through Phase 3D.
+- Python 3.11+ and the standard library are sufficient for Echo Core; FastAPI
+  is isolated in an optional adapter dependency.
 - Dataclasses represent kernel records; no schema framework is required yet.
 - `unittest` verifies the project without downloaded test dependencies.
 - The Entity is the public actor abstraction.
@@ -303,6 +324,8 @@ These are roadmap deferrals, not missing Phase 3D acceptance criteria.
   awaits subscribers, and overflow behavior is explicit and observable.
 - `RuntimeServiceProtocol` plus `docs/RUNTIME_API.md` define the stable
   application contract; Runtime coordination and storage stay private.
+- The FastAPI app is created around `RuntimeServiceProtocol`; routes translate
+  transport shapes only and never read or mutate Runtime internals.
 - Signals may affect internal state and drive activation only through explicit,
   validated influence requests linked to retained Signal IDs.
 - Drives influence attention candidate scoring but never authorize Actions.
@@ -321,9 +344,9 @@ These are roadmap deferrals, not missing Phase 3D acceptance criteria.
 
 ## Next task
 
-Stop after Phase 3D. Do not begin Phase 4 without explicit authorization.
-FastAPI, WebSockets, the CLI executable, Console, providers, persistence,
-replay, relationships, and behavior policy remain deferred.
+Stop after Phase 4A. Do not begin Phase 4B without explicit authorization.
+WebSockets, the CLI executable, Console, providers, persistence, replay,
+relationships, and behavior policy remain deferred.
 
 ## Important files
 
@@ -344,6 +367,7 @@ replay, relationships, and behavior policy remain deferred.
   dispatcher, minimal text parser, and command errors.
 - `src/echo/runtime_events.py` — event categories, subscription envelopes,
   bounded subscriber queues, and non-blocking broker.
+- `src/echo/adapters/fastapi.py` — optional HTTP adapter and app factory.
 - `src/echo/entity/attention.py` — attention proposal and retained candidate
   schemas.
 - `src/echo/entity/influence.py` — bounded Signal influence schema.
@@ -372,8 +396,11 @@ replay, relationships, and behavior policy remain deferred.
 - `tests/test_phase3_character.py` — Phase 3 character composition, influence,
   attention, atomicity, and observability.
 - `tests/test_api_contract.py` — executes the documented contract example.
+- `tests/test_fastapi_adapter.py` — HTTP response, error mapping, and optional
+  dependency isolation coverage.
 - `docs/RUNTIME_API.md` — stable Phase 3 service, command, subscription, and
   response/error contract.
+- `docs/HTTP_API.md` — Phase 4A endpoint and HTTP error contract.
 - `examples/runtime_api_contract.py` — executable documented contract example.
 - `docs/ARCHITECTURE.md` — implemented architecture boundary.
 - `docs/CHARACTER_ARCHITECTURE.md` — persistent character design and phased

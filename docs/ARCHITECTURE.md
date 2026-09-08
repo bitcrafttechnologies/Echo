@@ -159,12 +159,21 @@ event. Active drive values contribute to attention scores. An attention
 candidate is not a Task, intention, goal, or Action and cannot cause external
 behavior by itself.
 
+Phase 4A adds a one-way optional HTTP adapter under `echo.adapters`. Its app
+factory accepts `RuntimeServiceProtocol`; route handlers only construct the
+existing request/query records, call the matching service operation, and
+serialize the returned transport snapshots. Stable service failures are mapped
+to HTTP status codes without introducing HTTP concepts into the service or
+kernel. The package root never imports the adapter, so FastAPI is not required
+to import or run Echo Core.
+
 ## Boundaries
 
 The implemented kernel, service, command, and subscription layers contain no
 LLM, provider routing, persistence, web API, WebSocket, FastAPI, Console, ROS,
-or Medulla transport. Actions are structured intent records; execution against
-the outside world belongs to the later Medulla boundary.
+or Medulla transport. FastAPI exists only in the optional outward-facing
+adapter. Actions are structured intent records; execution against the outside
+world belongs to the later Medulla boundary.
 The Phase 2A `action.executed` observation identifies execution at the Runtime
 intent boundary, not an external side effect.
 

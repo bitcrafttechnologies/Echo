@@ -78,6 +78,19 @@ Phase 3 stops after Phase 3D. Phase 4 requires separate authorization.
 WebSockets, FastAPI, the Console, and the CLI executable are not part of Phase
 3D.
 
+## Phase 4 — Echo Console
+
+- Phase 4A (`0.4.1`): FastAPI adapter — completed.
+- Added an optional FastAPI dependency and an app factory around
+  `RuntimeServiceProtocol`.
+- Added HTTP health, Runtime status, Entity, Signal, Task, Action, state, and
+  log endpoints with structured service-error responses.
+- Verified endpoint responses and that Echo Core still runs when FastAPI is
+  unavailable.
+
+Phase 4 stops after Phase 4A. WebSockets, the Svelte Console, relationship
+integration, and later Phase 4 subphases require separate authorization.
+
 ## Deferred
 
 Remaining runtime APIs, Console, model providers,

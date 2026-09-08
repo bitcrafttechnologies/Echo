@@ -1,9 +1,9 @@
 # Echo
 
 Echo is a lightweight, persistent, event-driven runtime for intelligent
-entities. The implementation currently targets the kernel milestone described
-in `Echo_Plan.md` and intentionally has no LLM, web, ROS, or semantic-memory
-dependency.
+entities. The implementation currently includes an optional HTTP adapter while
+the kernel remains independent of web, LLM, ROS, and semantic-memory
+dependencies.
 
 The character architecture amendment establishes a second foundational rule:
 Echo—not an inference model—owns Entity identity and continuity. Its design and
@@ -20,6 +20,23 @@ runtime.
 ```console
 python -m unittest discover -s tests -v
 ```
+
+Install the optional Phase 4A HTTP adapter with:
+
+```console
+python -m pip install -e '.[api]'
+```
+
+Create the ASGI application around an existing service rather than a second
+Runtime:
+
+```python
+from echo.adapters.fastapi import create_app
+
+app = create_app(runtime_service)
+```
+
+The endpoint contract is documented in `docs/HTTP_API.md`.
 
 ## Phase 1 example
 
