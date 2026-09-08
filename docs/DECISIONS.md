@@ -22,3 +22,18 @@ Status: accepted
 Tests use `unittest`, including `IsolatedAsyncioTestCase`, so the clean kernel
 can be verified without installing development dependencies.
 
+## ADR-004: Awaited emission is the Phase 1 runtime boundary
+
+Status: accepted
+
+`Runtime.emit` schedules and processes through the emitted Signal before it
+returns. This makes tests and callers deterministic without introducing a
+background service lifecycle. Handlers may emit nested Signals; dispatch stays
+structured within the awaiting call.
+
+## ADR-005: Actions are observable intent, not external execution
+
+Status: accepted
+
+Phase 1 records Actions with Entity and Task attribution. Hardware, network,
+and tool execution remain behind the future Medulla boundary.

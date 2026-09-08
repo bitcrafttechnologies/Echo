@@ -2,8 +2,8 @@
 
 ## Current implementation
 
-The kernel contains Signal, Entity, handler registration, Task lifecycle state,
-and structured Action intent records.
+The Phase 1 kernel primitives are connected by an async priority Scheduler and
+Runtime. Awaiting emission dispatches handlers as Tasks and records Actions.
 
 ## Completed
 
@@ -11,30 +11,31 @@ and structured Action intent records.
 - Phase 1A Signal implementation and unit tests.
 - Phase 1B Entity and handler registry implementation and unit tests.
 - Phase 1C Task and Action implementation and unit tests.
+- Phase 1D Scheduler and Runtime implementation and unit tests.
 
 ## In progress
 
-- Phase 1D Scheduler and Runtime.
+- Phase 1E end-to-end integration tests and final Phase 1 verification.
 
 ## Known issues
 
-- Handlers are registered but not dispatched until the Runtime phase.
 - State is in memory; persistence is deferred.
 - Actions are recorded intent and have no external executor yet.
+- There is no long-running process host; awaited emission is the Phase 1 API.
 
 ## Architecture decisions
 
-- Task lifecycle transitions are explicit and reject invalid state changes.
-- Parent-child relationships store stable task IDs instead of object graphs.
-- Actions carry parameters plus optional Entity and Task attribution.
+- Scheduler priority is stable FIFO within each priority class.
+- Each Entity handler invocation owns one observable Task record.
+- Nested Entity emission remains in the same structured dispatch call.
 
 ## Next task
 
-Implement priority scheduling and unified asynchronous dispatch.
+Add black-box kernel integration coverage and verify the complete Phase 1 API.
 
 ## Important files
 
 - `Echo_Plan.md`
-- `src/echo/core/task.py`
-- `src/echo/core/action.py`
-- `tests/test_task_action.py`
+- `src/echo/core/scheduler.py`
+- `src/echo/core/runtime.py`
+- `tests/test_scheduler_runtime.py`
