@@ -52,6 +52,7 @@ Stable service error codes are:
 | `task_not_cancellable` | A Task is terminal or has no live execution. |
 | `signal_emission_failed` | A handler failed while processing a Signal. |
 | `invalid_character_influence` | State/drive dimensions are not configured. |
+| `inference_unavailable` | No configured provider allowed by the mode could serve inference. |
 | `runtime_service_error` | An otherwise unclassified service failure. |
 
 Transport adapters may map these errors to their own response mechanisms, but
@@ -81,6 +82,19 @@ the mapping is outside this contract and must not leak back into Echo Core.
 | `get_character_state(entity_id)` | ID | `CharacterStateResult` | Internal controls, drives, attention candidates. |
 | `get_attention_candidates(entity_id, limit)` | ID, limit | Attention candidates | Newest retained candidates first. |
 | `apply_signal_influence(request)` | `ApplySignalInfluenceRequest` | `SignalInfluenceResult` | Applies bounded deltas linked to a retained Signal. |
+| `infer(request)` | `InferenceRequest` | `InferenceResult` | Routes one inference through the optional ProviderRouter. |
+| `inspect_providers()` | none | `ProviderInspectionResult` | Health, active route/model, latency, failures, and request attribution. |
+| `set_provider_mode(mode)` | mode | `ProviderInspectionResult` | Switches among auto, remote, LAN, and offline policy. |
+| `reload_configuration()` | none | `ConfigurationReloadResult` | Explicitly validates, classifies, and transactionally applies the configured file. |
+| `inspect_configuration()` | none | `ConfigurationInspectionResult` | Effective fields with secret-safe values and editability metadata. |
+| `update_configuration(values)` | dotted-path mapping | `ConfigurationReloadResult` | Validates and applies approved live-safe values only. |
+
+Configuration reload requires a `RuntimeConfigurationManager` attached when
+the service is constructed. Results classify each changed dotted path as
+`live_safe` or `restart_required`. Any restart-required change rejects the
+whole candidate, and validation failures leave the active typed configuration
+unchanged. Each outcome is also published as a structured
+`configuration.reload` Runtime event.
 
 ### Character control boundary
 
@@ -122,6 +136,9 @@ runtime service contract.
 | `state.get` | `StateGetCommand` | `get_entity_state` |
 | `state.set` | `StateSetCommand` | `set_allowed_state_values` |
 | `logs` | `LogsCommand` | `get_logs` |
+| `config.reload` | `ConfigReloadCommand` | `reload_configuration` |
+| `config.inspect` | `ConfigInspectCommand` | `inspect_configuration` |
+| `config.set` | `ConfigSetCommand` | `update_configuration` |
 
 Command failures raise a `DeveloperCommandError` subclass and serialize using
 the same `code`, `message`, `details` convention. Stable codes are
@@ -144,6 +161,9 @@ action list
 state get <entity-id>
 state set <entity-id> '<values-json-object>'
 logs
+config reload
+config inspect
+config set <dotted-path> '<json-value>'
 ```
 
 It uses `shlex.split()` and `json.loads()` only. It does not execute Python,

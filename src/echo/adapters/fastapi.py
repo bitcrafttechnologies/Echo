@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from echo import (
     ActionQuery,
     EmitSignalRequest,
+    InferenceRequest,
     LogQuery,
     RuntimeServiceError,
     RuntimeServiceProtocol,
@@ -59,6 +60,31 @@ class StateUpdateBody(BaseModel):
     values: dict[str, Any]
 
 
+class InferenceBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    prompt: str = Field(min_length=1)
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    request_id: str | None = Field(default=None, min_length=1)
+
+    def to_request(self) -> InferenceRequest:
+        values = self.model_dump(exclude_none=True)
+        return InferenceRequest(**values)
+
+
+class ProviderModeBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: str
+
+
+class ConfigurationUpdateBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    values: dict[str, Any]
+
+
 _ERROR_STATUS = {
     "invalid_request": status.HTTP_400_BAD_REQUEST,
     "not_found": status.HTTP_404_NOT_FOUND,
@@ -66,6 +92,9 @@ _ERROR_STATUS = {
     "task_not_cancellable": status.HTTP_409_CONFLICT,
     "signal_emission_failed": 422,
     "invalid_character_influence": 422,
+    "inference_unavailable": status.HTTP_503_SERVICE_UNAVAILABLE,
+    "configuration_reload_unavailable": status.HTTP_503_SERVICE_UNAVAILABLE,
+    "invalid_configuration": 422,
     "runtime_service_error": status.HTTP_500_INTERNAL_SERVER_ERROR,
 }
 
@@ -114,7 +143,7 @@ def create_app(service: RuntimeServiceProtocol) -> FastAPI:
     if not isinstance(service, RuntimeServiceProtocol):
         raise TypeError("service must implement RuntimeServiceProtocol")
 
-    app = FastAPI(title="Echo Runtime API", version="0.4.5")
+    app = FastAPI(title="Echo Runtime API", version="0.6.3")
 
     @app.exception_handler(RuntimeServiceError)
     async def handle_runtime_service_error(
@@ -138,6 +167,32 @@ def create_app(service: RuntimeServiceProtocol) -> FastAPI:
     @app.get("/runtime/status", tags=["runtime"])
     async def runtime_status() -> dict[str, Any]:
         return _as_dict(service.get_runtime_status())
+
+    @app.post("/configuration/reload", tags=["configuration"])
+    async def reload_configuration() -> dict[str, Any]:
+        return _as_dict(service.reload_configuration())
+
+    @app.get("/configuration", tags=["configuration"])
+    async def inspect_configuration() -> dict[str, Any]:
+        return _as_dict(service.inspect_configuration())
+
+    @app.patch("/configuration", tags=["configuration"])
+    async def update_configuration(
+        body: ConfigurationUpdateBody,
+    ) -> dict[str, Any]:
+        return _as_dict(service.update_configuration(body.values))
+
+    @app.get("/providers", tags=["providers"])
+    async def inspect_providers() -> dict[str, Any]:
+        return _as_dict(await service.inspect_providers())
+
+    @app.patch("/providers/mode", tags=["providers"])
+    async def set_provider_mode(body: ProviderModeBody) -> dict[str, Any]:
+        return _as_dict(await service.set_provider_mode(body.mode))
+
+    @app.post("/inference", tags=["providers"])
+    async def infer(body: InferenceBody) -> dict[str, Any]:
+        return _as_dict(await service.infer(body.to_request()))
 
     @app.get("/entities", tags=["entities"])
     async def list_entities() -> list[dict[str, Any]]:

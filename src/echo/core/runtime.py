@@ -51,6 +51,9 @@ class Runtime:
         signal_history_size: int = 1000,
         task_history_size: int = 1000,
         action_history_size: int = 1000,
+        log_history_size: int = 1000,
+        error_history_size: int = 1000,
+        auto_start: bool = True,
     ) -> None:
         self.id = str(uuid4())
         self.scheduler = scheduler or Scheduler()
@@ -75,11 +78,18 @@ class Runtime:
         self._active_task_runs: dict[
             str, tuple[asyncio.Task[Any], asyncio.Event]
         ] = {}
-        self._log_events: deque[RuntimeLogEvent] = deque(maxlen=1000)
-        self._recent_errors: deque[RuntimeLogEvent] = deque(maxlen=1000)
+        if isinstance(log_history_size, bool) or log_history_size < 1:
+            raise ValueError("log_history_size must be a positive integer")
+        if isinstance(error_history_size, bool) or error_history_size < 1:
+            raise ValueError("error_history_size must be a positive integer")
+        if not isinstance(auto_start, bool):
+            raise ValueError("auto_start must be a boolean")
+        self._log_events: deque[RuntimeLogEvent] = deque(maxlen=log_history_size)
+        self._recent_errors: deque[RuntimeLogEvent] = deque(maxlen=error_history_size)
         for entity in entities:
             self.register(entity)
-        self.start()
+        if auto_start:
+            self.start()
 
     def start(self) -> None:
         """Mark the Runtime active and record the transition."""
@@ -100,6 +110,43 @@ class Runtime:
             self._uptime_started = None
         self.running = False
         self._log(RuntimeEventType.RUNTIME_STOPPED, metadata={"runtime_id": self.id})
+
+    def resize_histories(
+        self,
+        *,
+        signals: int,
+        tasks: int,
+        actions: int,
+        logs: int,
+        errors: int,
+    ) -> None:
+        """Apply validated retention limits without replacing the Runtime."""
+
+        limits = {
+            "signals": signals,
+            "tasks": tasks,
+            "actions": actions,
+            "logs": logs,
+            "errors": errors,
+        }
+        for name, limit in limits.items():
+            if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+                raise ValueError(f"{name} history limit must be a positive integer")
+        self.signal_history.resize(signals)
+        self.task_history.resize(tasks)
+        self.action_history.resize(actions)
+        self._log_events = deque(self._log_events, maxlen=logs)
+        self._recent_errors = deque(self._recent_errors, maxlen=errors)
+
+    def audit_configuration_reload(self, metadata: dict[str, Any]) -> None:
+        """Publish one structured, detached configuration reload audit event."""
+
+        if not isinstance(metadata, dict):
+            raise TypeError("configuration reload metadata must be a dictionary")
+        self._log(
+            RuntimeEventType.CONFIGURATION_RELOAD,
+            metadata=deepcopy(metadata),
+        )
 
     def register(self, entity: Entity) -> Entity:
         if entity.id in self.entities and self.entities[entity.id] is not entity:

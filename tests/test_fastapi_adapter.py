@@ -18,12 +18,16 @@ except ImportError:
 from echo import (
     EmitSignalRequest,
     Entity,
+    MockProvider,
+    ProviderRouter,
     RelationshipState,
     RelationshipStore,
     Runtime,
+    RuntimeConfigurationManager,
     RuntimeService,
     RuntimeSubscriptionRequest,
     Signal,
+    parse_config,
 )
 
 
@@ -95,6 +99,99 @@ class FastAPIAdapterTests(unittest.TestCase):
         self.assertEqual(
             self.client.get("/entities/bit/relationships/missing").status_code,
             404,
+        )
+
+        reload_response = self.client.post("/configuration/reload")
+        self.assertEqual(reload_response.status_code, 503)
+        self.assertEqual(
+            reload_response.json()["error"]["code"],
+            "configuration_reload_unavailable",
+        )
+
+    def test_provider_inspection_switching_inference_and_optional_failure(self) -> None:
+        empty = self.client.get("/providers")
+        self.assertEqual(empty.status_code, 200)
+        self.assertEqual(empty.json()["configured_providers"], {})
+        unavailable = self.client.post("/inference", json={"prompt": "hello"})
+        self.assertEqual(unavailable.status_code, 503)
+        self.assertEqual(unavailable.json()["error"]["code"], "inference_unavailable")
+
+        from echo.adapters.fastapi import create_app
+
+        router = ProviderRouter(
+            remote=MockProvider(provider_id="openrouter", model="remote-model")
+        )
+        client = TestClient(
+            create_app(RuntimeService(Runtime([Entity("api-bit")]), provider_router=router))
+        )
+        changed = client.patch("/providers/mode", json={"mode": "remote"})
+        self.assertEqual(changed.status_code, 200)
+        self.assertEqual(changed.json()["mode"], "remote")
+        inference = client.post(
+            "/inference", json={"prompt": "hello", "request_id": "api-request"}
+        )
+        self.assertEqual(inference.status_code, 200)
+        self.assertEqual(inference.json()["provider"]["provider_id"], "openrouter")
+        status = client.get("/providers").json()
+        self.assertEqual(status["active_provider"]["provider_id"], "openrouter")
+        self.assertEqual(status["recent_inferences"][0]["request_id"], "api-request")
+
+    def test_configuration_inspection_and_control_are_secret_safe(self) -> None:
+        from echo.adapters.fastapi import create_app
+
+        config = parse_config(
+            {
+                "providers": {
+                    "openrouter": {"api_key": "browser-must-never-see"}
+                }
+            }
+        )
+        runtime = config.create_runtime()
+        router = config.create_provider_router()
+        manager = RuntimeConfigurationManager(
+            config, runtime, provider_router=router
+        )
+        client = TestClient(
+            create_app(
+                RuntimeService(
+                    runtime,
+                    provider_router=router,
+                    configuration_manager=manager,
+                )
+            )
+        )
+
+        inspected = client.get("/configuration")
+        self.assertEqual(inspected.status_code, 200)
+        self.assertNotIn("browser-must-never-see", inspected.text)
+        fields = {item["path"]: item for item in inspected.json()["fields"]}
+        self.assertEqual(
+            fields["providers.openrouter.api_key"],
+            {
+                "path": "providers.openrouter.api_key",
+                "value": None,
+                "classification": "restart_required",
+                "editable": False,
+                "secret": True,
+                "configured": True,
+                "reason": "secret value is hidden",
+            },
+        )
+
+        updated = client.patch(
+            "/configuration", json={"values": {"history.signals": 25}}
+        )
+        self.assertEqual(updated.status_code, 200)
+        self.assertTrue(updated.json()["applied"])
+        self.assertEqual(runtime.signal_history.max_size, 25)
+
+        invalid = client.patch(
+            "/configuration", json={"values": {"api.port": 9000}}
+        )
+        self.assertEqual(invalid.status_code, 422)
+        self.assertEqual(
+            invalid.json()["error"]["details"]["issues"][0]["path"],
+            "api.port",
         )
 
     def test_signal_task_action_state_and_log_responses(self) -> None:

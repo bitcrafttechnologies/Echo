@@ -4,6 +4,60 @@ export type RuntimeStatus = {
   uptime_seconds: number;
 };
 
+export type ProviderMetadata = {
+  provider_id: string;
+  name: string;
+  model: string | null;
+  capabilities: string[];
+  version: string | null;
+  attributes: Record<string, unknown>;
+};
+
+export type ProviderInspection = {
+  mode: 'auto' | 'remote' | 'lan' | 'offline';
+  preference: Array<'remote' | 'lan' | 'offline'>;
+  configured_providers: Record<string, ProviderMetadata>;
+  health: Record<string, { status: string; message: string | null; provider: ProviderMetadata }>;
+  active_provider: ProviderMetadata | null;
+  model: string | null;
+  last_latency_ms: number | null;
+  recent_failures: Array<{ slot: string; request_id: string; error_reason: string; completed_at: string }>;
+  recent_inferences: Array<{ request_id: string; mode: string; served_by: ProviderMetadata | null; latency_ms: number; completed_at: string }>;
+};
+
+export type ConfigurationChange = {
+  path: string;
+  classification: 'live_safe' | 'restart_required';
+  previous: unknown;
+  requested: unknown;
+  reason: string;
+};
+
+export type ConfigurationReloadResult = {
+  status: 'applied' | 'no_change' | 'restart_required';
+  applied: boolean;
+  source: string | null;
+  changes: ConfigurationChange[];
+  live_safe_changes: ConfigurationChange[];
+  restart_required_changes: ConfigurationChange[];
+  completed_at: string;
+};
+
+export type ConfigurationField = {
+  path: string;
+  value: unknown;
+  classification: 'live_editable' | 'restart_required';
+  editable: boolean;
+  secret: boolean;
+  configured: boolean;
+  reason: string;
+};
+
+export type ConfigurationInspection = {
+  source: string | null;
+  fields: ConfigurationField[];
+};
+
 export type RuntimeEvent = {
   event_type: string;
   timestamp: string;
@@ -111,9 +165,15 @@ export type RuntimeLogEntry = RuntimeEvent & {
 async function responseError(response: Response, fallback: string): Promise<Error> {
   try {
     const body = (await response.json()) as {
-      error?: { message?: string };
+      error?: {
+        message?: string;
+        details?: { issues?: Array<{ path: string; message: string }> };
+      };
     };
-    return new Error(body.error?.message || `${fallback} (${response.status})`);
+    const issues = body.error?.details?.issues ?? [];
+    const issueText = issues.map((issue) => `${issue.path}: ${issue.message}`).join('\n');
+    const message = body.error?.message || `${fallback} (${response.status})`;
+    return new Error(issueText ? `${message}\n${issueText}` : message);
   } catch {
     return new Error(`${fallback} (${response.status})`);
   }
@@ -130,6 +190,71 @@ export async function fetchRuntimeStatus(
     throw new Error(`Runtime status request failed (${response.status})`);
   }
   return (await response.json()) as RuntimeStatus;
+}
+
+export async function fetchProviders(
+  fetcher: typeof fetch,
+  apiBase = '/api'
+): Promise<ProviderInspection> {
+  const response = await fetcher(`${apiBase.replace(/\/$/, '')}/providers`, {
+    headers: { accept: 'application/json' }
+  });
+  if (!response.ok) throw await responseError(response, 'Provider inspection failed');
+  return (await response.json()) as ProviderInspection;
+}
+
+export async function setProviderMode(
+  fetcher: typeof fetch,
+  mode: ProviderInspection['mode'],
+  apiBase = '/api'
+): Promise<ProviderInspection> {
+  const response = await fetcher(`${apiBase.replace(/\/$/, '')}/providers/mode`, {
+    method: 'PATCH',
+    headers: { accept: 'application/json', 'content-type': 'application/json' },
+    body: JSON.stringify({ mode })
+  });
+  if (!response.ok) throw await responseError(response, 'Provider mode update failed');
+  return (await response.json()) as ProviderInspection;
+}
+
+export async function reloadConfiguration(
+  fetcher: typeof fetch,
+  apiBase = '/api'
+): Promise<ConfigurationReloadResult> {
+  const response = await fetcher(
+    `${apiBase.replace(/\/$/, '')}/configuration/reload`,
+    {
+      method: 'POST',
+      headers: { accept: 'application/json' }
+    }
+  );
+  if (!response.ok) throw await responseError(response, 'Configuration reload failed');
+  return (await response.json()) as ConfigurationReloadResult;
+}
+
+export async function fetchConfiguration(
+  fetcher: typeof fetch,
+  apiBase = '/api'
+): Promise<ConfigurationInspection> {
+  const response = await fetcher(`${apiBase.replace(/\/$/, '')}/configuration`, {
+    headers: { accept: 'application/json' }
+  });
+  if (!response.ok) throw await responseError(response, 'Configuration inspection failed');
+  return (await response.json()) as ConfigurationInspection;
+}
+
+export async function updateConfiguration(
+  fetcher: typeof fetch,
+  values: Record<string, unknown>,
+  apiBase = '/api'
+): Promise<ConfigurationReloadResult> {
+  const response = await fetcher(`${apiBase.replace(/\/$/, '')}/configuration`, {
+    method: 'PATCH',
+    headers: { accept: 'application/json', 'content-type': 'application/json' },
+    body: JSON.stringify({ values })
+  });
+  if (!response.ok) throw await responseError(response, 'Configuration update failed');
+  return (await response.json()) as ConfigurationReloadResult;
 }
 
 export async function fetchSignals(

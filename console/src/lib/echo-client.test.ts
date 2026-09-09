@@ -3,15 +3,20 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   eventStreamUrl,
   cancelTask,
+  fetchConfiguration,
   fetchLogs,
+  fetchProviders,
   fetchRuntimeStatus,
   fetchSignals,
   filterSignals,
   formatUptime,
   mergeSignals,
+  reloadConfiguration,
+  setProviderMode,
   sendUserMessage,
   signalFromEvent,
   taskDepth,
+  updateConfiguration,
   type TaskHistoryEntry,
   type SignalHistoryEntry
 } from './echo-client';
@@ -61,6 +66,89 @@ describe('Echo API client', () => {
     const fetcher = vi.fn(async () => new Response(null, { status: 503 }));
     await expect(fetchRuntimeStatus(fetcher)).rejects.toThrow(
       'Runtime status request failed (503)'
+    );
+  });
+
+  it('inspects providers and switches only through the management API', async () => {
+    const providerStatus = {
+      mode: 'auto', preference: ['remote', 'lan', 'offline'], configured_providers: {}, health: {}, active_provider: null,
+      model: null, last_latency_ms: null, recent_failures: [], recent_inferences: []
+    } as const;
+    const fetcher = vi.fn(async () =>
+      new Response(JSON.stringify(providerStatus), {
+        status: 200, headers: { 'content-type': 'application/json' }
+      })
+    );
+    await expect(fetchProviders(fetcher, '/api/')).resolves.toEqual(providerStatus);
+    await setProviderMode(fetcher, 'offline', '/api/');
+    expect(fetcher).toHaveBeenNthCalledWith(1, '/api/providers', {
+      headers: { accept: 'application/json' }
+    });
+    expect(fetcher).toHaveBeenNthCalledWith(2, '/api/providers/mode', {
+      method: 'PATCH',
+      headers: { accept: 'application/json', 'content-type': 'application/json' },
+      body: JSON.stringify({ mode: 'offline' })
+    });
+  });
+
+  it('reloads configuration only through the explicit management operation', async () => {
+    const result = {
+      status: 'restart_required', applied: false, source: 'echo.toml', changes: [],
+      live_safe_changes: [], restart_required_changes: [], completed_at: '2026-09-08T12:00:00Z'
+    } as const;
+    const fetcher = vi.fn(async () =>
+      new Response(JSON.stringify(result), {
+        status: 200, headers: { 'content-type': 'application/json' }
+      })
+    );
+
+    await expect(reloadConfiguration(fetcher, '/api/')).resolves.toEqual(result);
+    expect(fetcher).toHaveBeenCalledWith('/api/configuration/reload', {
+      method: 'POST',
+      headers: { accept: 'application/json' }
+    });
+  });
+
+  it('inspects and updates configuration without exposing secret values', async () => {
+    const inspection = {
+      source: 'echo.toml',
+      fields: [
+        { path: 'providers.openrouter.api_key', value: null, classification: 'restart_required', editable: false, secret: true, configured: true, reason: 'secret value is hidden' },
+        { path: 'providers.mode', value: 'auto', classification: 'live_editable', editable: true, secret: false, configured: true, reason: 'routing mode is selected per inference request' }
+      ]
+    } as const;
+    const fetcher = vi.fn(async (_url: Parameters<typeof fetch>[0], init?: RequestInit) =>
+      new Response(
+        JSON.stringify(init?.method === 'PATCH'
+          ? { status: 'applied', applied: true, changes: [] }
+          : inspection),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      )
+    );
+
+    await expect(fetchConfiguration(fetcher, '/api/')).resolves.toEqual(inspection);
+    await updateConfiguration(fetcher, { 'providers.mode': 'lan' }, '/api/');
+    expect(fetcher).toHaveBeenNthCalledWith(1, '/api/configuration', {
+      headers: { accept: 'application/json' }
+    });
+    expect(fetcher).toHaveBeenNthCalledWith(2, '/api/configuration', {
+      method: 'PATCH',
+      headers: { accept: 'application/json', 'content-type': 'application/json' },
+      body: JSON.stringify({ values: { 'providers.mode': 'lan' } })
+    });
+    expect(JSON.stringify(inspection)).not.toContain('browser-must-never-see');
+  });
+
+  it('formats configuration validation issues cleanly', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({
+      error: {
+        message: 'configuration update validation failed',
+        details: { issues: [{ path: 'history.signals', message: 'must be at least 1' }] }
+      }
+    }), { status: 422, headers: { 'content-type': 'application/json' } }));
+
+    await expect(updateConfiguration(fetcher, { 'history.signals': 0 })).rejects.toThrow(
+      'configuration update validation failed\nhistory.signals: must be at least 1'
     );
   });
 

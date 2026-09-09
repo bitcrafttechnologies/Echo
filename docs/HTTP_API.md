@@ -29,6 +29,12 @@ app = create_app(runtime_service)
 | --- | --- | --- |
 | `GET` | `/health` | `get_runtime_status()` readiness check |
 | `GET` | `/runtime/status` | `get_runtime_status()` |
+| `GET` | `/configuration` | `inspect_configuration()` |
+| `PATCH` | `/configuration` | `update_configuration()` |
+| `GET` | `/providers` | `inspect_providers()` |
+| `PATCH` | `/providers/mode` | `set_provider_mode()` |
+| `POST` | `/inference` | `infer()` |
+| `POST` | `/configuration/reload` | `reload_configuration()` |
 | `GET` | `/entities` | `get_entities()` |
 | `GET` | `/entities/{entity_id}` | `inspect_entity()` |
 | `GET` | `/entities/{entity_id}/relationships` | `get_relationships()` |
@@ -59,6 +65,29 @@ Signal injection accepts `type`, optional `id`, `source`, `timestamp`,
 `payload`, `metadata`, and `priority`. State writes accept an object shaped as
 `{"values": {...}}` and remain constrained by the service's per-Entity
 allowlist.
+
+Provider mode writes accept `{"mode":"auto"}`, with `remote`, `lan`, and
+`offline` as the other allowed values. Inference accepts a required `prompt`
+plus optional `parameters`, `metadata`, and `request_id`. Provider inspection
+returns configured provider metadata, health, active provider/model, latest
+latency, recent failures, and bounded per-request serving-provider history.
+
+`POST /configuration/reload` accepts no path or body. It reloads the file owned
+by the host's `RuntimeConfigurationManager`, preventing remote clients from
+selecting arbitrary server files. The result lists every changed dotted path,
+its `live_safe` or `restart_required` classification, previous/requested
+secret-safe values, and whether anything was applied. If any changed setting
+requires restart, the operation applies none of the candidate. Invalid TOML or
+schema values also preserve the active configuration.
+
+`GET /configuration` returns the active effective typed fields and labels each
+as `live_editable` or `restart_required`. Secret fields contain only
+`secret: true`, whether they are configured, and a null value; API keys never
+cross the service boundary. `PATCH /configuration` accepts
+`{"values":{"providers.mode":"lan"}}` using dotted field paths. Only fields
+classified live-editable are accepted, and the complete candidate is validated
+before application. Validation issues retain their dotted paths under
+`error.details.issues`.
 
 ## WebSocket event stream
 
@@ -97,9 +126,9 @@ errors keep their stable Phase 3 body under an `error` key:
 ```
 
 The adapter maps invalid requests to `400`, missing resources to `404`, denied
-state updates to `403`, non-cancellable Tasks to `409`, failed Signal handling
-and invalid character influence to `422`, and unclassified service errors to
-`500`.
+state updates to `403`, non-cancellable Tasks to `409`, failed Signal handling,
+invalid character influence, and configuration validation to `422`,
+unavailable inference or reload support to `503`, and unclassified service
+errors to `500`.
 
-Authentication, process hosting, the Svelte Console, and relationship APIs are
-not part of Phase 4B.
+Authentication and process hosting remain outside this adapter.

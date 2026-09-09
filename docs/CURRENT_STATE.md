@@ -2,23 +2,165 @@
 
 ## Current implementation
 
-Echo Phase 4E consists of a minimal, standard-library Python kernel, an
-optional FastAPI HTTP and WebSocket adapter, and a separate SvelteKit
-development console shell. The documented, transport-agnostic runtime
+Echo through Phase 6C plus the `0.4-tui_core` interface track consists of a
+minimal, standard-library Python kernel, an optional FastAPI HTTP and WebSocket
+adapter, and a separate SvelteKit development console shell. The documented,
+transport-agnostic runtime
 contract, structured developer commands, and live event subscriptions remain
 the only control boundary used by the transport and presentation layers. Phase
 3 character state, drives, Signal influence, and attention candidates, plus
 Phase 4 per-person relationship state, are implemented in memory.
 
+Phase 6A adds the single typed `EchoConfig` application schema and a TOML
+loader based on Python's standard-library `tomllib`. Nested sections cover
+Runtime startup, Python logging, Signal/Task/Action/log/error history limits,
+provider routing, OpenRouter, LAN inference, offline inference, API binding,
+and Console connectivity. `load_config()` loads an explicit path,
+`ECHO_CONFIG`, or a repository-local `echo.toml`, overlays allowlisted
+environment values, rejects unknown keys, and reports every discovered field
+error together with its dotted path and source file. Secrets are excluded from
+configuration representations.
+
+Phase 6B adds explicit, transactional reload through
+`RuntimeConfigurationManager`. A candidate file and its environment overrides
+are fully validated before comparison with active state. Logging level/format,
+provider mode/preference, router history, and Runtime history bounds are
+live-safe. Provider construction and credentials, Runtime startup, API binding,
+and Console connectivity are restart-required. If any restart-required field
+changes, no part of the candidate is applied. Invalid candidates likewise
+leave active state intact. Every outcome emits a structured, secret-safe
+`configuration.reload` audit event.
+
+Phase 6C exposes the active effective configuration through the shared service
+boundary. Each dotted field includes its effective value and is marked
+`live_editable` or `restart_required`; credential fields expose only hidden and
+configured metadata with a null value. API keys never enter HTTP or browser
+responses. Approved dotted-path updates rebuild and validate a complete typed
+candidate before using the Phase 6B transaction. The web Console and TUI show
+the same classification, provide live-safe controls, and render aggregated
+validation issues by field.
+
+The root `install.sh` now installs the complete Python/API/test environment and
+locked Web Console dependencies without prompts or configuration mutation. The
+root `start.sh` loads the ignored project `.env` as a non-overwriting secret
+overlay and starts Core alone, Core with the Web Console, Core with the terminal
+Console, or all three. Its explicit `--host` option can bind Core and the Web
+Console for LAN testing while the development proxy uses loopback. Process
+cleanup is bounded to the child processes started by the launcher.
+
+`EchoConfig.create_runtime()` and `create_provider_router()` are the explicit
+construction boundary for validated settings. Disabled provider sections do
+not construct providers, so Core still runs without inference. Runtime history
+limits now include its management-plane log and error buffers. `echoc`
+validates configuration before starting a Console client and consumes the
+configured API URL, request timeout, logging level, and tmux session default;
+`echoc config validate [PATH]` offers a startup-free validation check. The API
+host example uses the same validated object for its bind address and port.
+
+Phase 5A adds a dependency-free `echo.providers` boundary. Its runtime-checkable
+`IntelligenceProvider` protocol supports asynchronous inference and health
+checks plus immutable provider metadata. Structured inference and health
+results include the serving provider and timing. Embedding and classification
+are isolated behind optional capability protocols, and the deterministic
+`MockProvider` supports tests without configuring a model. Echo Core does not
+construct or require a provider.
+
+Phase 5B centralizes selection in `ProviderRouter`. `auto` makes one bounded
+OpenRouter/remote → LAN → offline pass, while `remote`, `lan`, and `offline`
+modes attempt only the matching configured slot. The router retains the latest
+selected provider, every failed attempt, per-attempt and total latency, request ID, and
+error reasons. Its async health result and detached status snapshot are
+inspectable without invoking a model. If every allowed provider fails—or the
+selected mode has no configured provider—it raises the structured
+`InferenceUnavailableError` with the complete bounded attempt record.
+
+Phase 5C implements the router's remote slot with `OpenRouterProvider`. It uses
+OpenRouter's OpenAI-compatible chat-completions endpoint and authenticated key
+health endpoint through a replaceable, standard-library HTTP transport.
+`OpenRouterConfig` reads `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, base URL,
+timeout, and optional attribution values from the environment, or accepts
+equivalent application-supplied configuration. Inference results normalize
+text, actual served model, finish reason, token usage, provider metadata, and
+timing. Configuration, request, network, API, and response failures are
+structured. The provider makes one attempt and never falls back internally;
+the router remains the only fallback owner. Logs include provider, model,
+request ID, outcome, and timing, but exclude prompts, headers, and credentials.
+
+Phase 5D implements `LanInferenceProvider` for one explicitly configured
+llama.cpp or equivalent OpenAI-compatible server. It accepts a host root,
+`/v1` root, or full chat-completions URL and normalizes it to the API root.
+Configuration supports `LAN_INFERENCE_*` and `LLAMA_CPP_*` environment aliases
+for base URL, model, timeout, and an optional API key. Inference uses one
+non-streaming `/v1/chat/completions` request; health uses `/v1/health` and
+distinguishes ready, loading/degraded, malformed, and unavailable states.
+Results normalize text, served model, usage, finish reason, server timing,
+provider metadata, and client timing. The provider performs no discovery,
+retry, or fallback; `ProviderRouter` remains the sole fallback owner.
+
+Phase 5E implements `OfflineInferenceProvider` as the final lazy fallback. Its
+model path is mandatory for use and is supplied explicitly through
+`OfflineInferenceConfig`, `OFFLINE_MODEL_PATH`, or `LLAMA_CPP_MODEL_PATH`;
+there is no model-directory scan. Construction, status, and health checks do
+not initialize the model. When—and only when—routing reaches offline inference,
+the provider loads its backend once, normalizes the result, and reports loaded
+state. `unload()` releases the backend and returns to unloaded state. The
+inspectable lifecycle distinguishes unconfigured, unloaded, loading, loaded,
+unloading, and error states.
+
+The default `LlamaCppServerBackend` launches an owned `llama-server` subprocess
+on loopback without a shell, waits for bounded health readiness, uses the LAN
+OpenAI-compatible client for inference, and terminates or kills only that child
+during bounded unload. `OfflineInferenceBackend` remains replaceable for other
+local engines. Initialization, execution, and unload errors are structured.
+Concurrent first inference calls share one load, and unload cannot race active
+inference. This preserves the battery goal: normal OpenRouter success leaves
+the offline model entirely unloaded.
+
+Phase 5F integrates the router as an optional `RuntimeService` dependency and
+adds bounded per-request routing history. Each record identifies the request,
+mode, provider that actually served it, total latency, all attempts, and any
+terminal error. Service inspection combines this history with every configured
+provider's health, current active provider/model, latest latency, and recent
+failures. HTTP endpoints, typed developer commands, the Svelte Console, and the
+TUI expose the same management-plane view and can switch among `auto`,
+`remote`, `lan`, and `offline`. A runtime without a router still runs normally
+and reports an empty provider view; inference fails with a structured
+`inference_unavailable` service error.
+
+The Phase 5 character slice adds Entity-owned `CharacterMemory` with distinct
+working, episodic, semantic, preference, and relationship record types. Records
+are immutable and provider-independent, and Entity inspection keeps the five
+categories separate. The Phase 6 character slice adds normalized importance
+evidence for selective retention and Echo-owned consolidation proposals.
+Repeated retained episodes can produce semantic, preference, or relationship
+memory only after evidence, confidence, subject scope, and contradiction
+checks. Both accepted and rejected retention/consolidation decisions are kept
+in bounded in-memory audit histories. Persistence and context retrieval remain
+assigned to Phase 7.
+
+The first-party terminal interface now mirrors every implemented web console
+surface through detached management snapshots: Overview, Chat, Signals,
+Tasks, Entity/character/relationships/memory, Providers, and Logs. It can run in-process through
+`LocalEchoClient`, against the local HTTP adapter through `HttpEchoClient`, as
+a single full-screen terminal, as a semantic plain-text snapshot, or in a
+named tmux workspace. The TUI has no direct Runtime mutation path.
+
 The `0.1-amendment/character_plan` branch also records the persistent character
 architecture and adds its provider-independent base vocabulary. Phase 2 now
 composes identity, traits, and self-model into the Entity. Phase 3 now composes
 internal state, drive baselines and activation, and attention candidates.
-Relationship learning, Bit configuration loading, and prompts remain
-scaffolding for their later roadmap phases.
+Phase 6 now supports evidence-based relationship-memory consolidation. Broader
+relationship learning and Bit-specific configuration loading remain later work;
+the checked-in Bit files are still reference scaffolding.
 
 The public package exports:
 
+- `EchoConfig`, its typed section dataclasses, `ConfigurationIssue`,
+  `ConfigurationError`, and `load_config`
+- `RuntimeConfigurationManager`, reload change/result schemas and enums, and
+  `ConfigurationReloadApplyError`
+- secret-safe `ConfigurationInspectionResult`/`ConfigurationField` schemas and
+  the validated `parse_config()` mapping entry point
 - `Signal`
 - `Entity`
 - `HandlerRegistry`
@@ -45,6 +187,24 @@ The public package exports:
 - `InternalState`, `DriveProfile`, `SignalInfluence`, `AttentionProposal`, and
   `AttentionCandidate`
 - `RelationshipState` and `RelationshipStore`
+- typed `CharacterMemory` plus working, episodic, semantic, preference, and
+  relationship memory records
+- `MemoryImportance`, retention decisions, and consolidation proposal/decision
+  schemas
+- `IntelligenceProvider`, structured provider request/result types, health and
+  metadata vocabulary, optional capability protocols, and `MockProvider`
+- `ProviderRouter`, routing modes/status/attempt and inference-history records, and
+  `InferenceUnavailableError`
+- `OpenRouterProvider`, `OpenRouterConfig`, its replaceable HTTP transport, and
+  structured OpenRouter error hierarchy
+- `LanInferenceProvider`, `LanInferenceConfig`, its replaceable HTTP transport,
+  and structured LAN inference error hierarchy
+- `OfflineInferenceProvider`, explicit configuration/status/error types, the
+  local-backend protocol, and `LlamaCppServerBackend`
+- `ProviderInspectionResult` and optional RuntimeService inference, inspection,
+  and mode-switch operations
+- explicit RuntimeService configuration reload with structured validation and
+  availability errors
 
 The optional `echo.adapters.fastapi` module exports `create_app()`, providing
 HTTP inspection/control and `/events` WebSocket streaming. It is not imported
@@ -86,12 +246,13 @@ queries to work independently of the configured external `LogSink`.
 `DeveloperCommandDispatcher` maps explicit command dataclasses to
 `RuntimeService` calls for runtime status, Entity inspection, Signal listing,
 inspection and injection, Task listing, inspection and cancellation, Action
-listing, Entity state reads and allowlisted writes, and logs. Direct command
-objects are suitable for a future Console; a minimal text parser provides the
-same schemas for a future CLI. Results and failures have structured `to_dict()`
-representations. The parser uses `shlex` for tokenization and `json.loads` for
-object values. It has no dynamic imports, `eval`, `exec`, shell invocation, or
-arbitrary Python execution path.
+listing, Entity state reads and allowlisted writes, logs, provider inspection
+and mode selection, and explicit configuration reload. Direct command objects
+and the minimal text parser feed the Console/TUI clients through the same
+schemas. Results and failures have structured `to_dict()` representations. The
+parser uses `shlex` for tokenization and `json.loads` for object values. It has
+no dynamic imports, `eval`, `exec`, shell invocation, or arbitrary Python
+execution path.
 
 `RuntimeService.subscribe_events()` creates an isolated subscription to future
 Runtime activity. Each structured log event is classified as Signal receipt,
@@ -128,10 +289,10 @@ learning, mutation policy, and persistence remain deferred.
 `create_app(runtime_service)` exposes health, Runtime status, Entity list and
 inspection, Signal emission/list/inspection, Task list/inspection/cancellation,
 Action list/inspection, Entity state reads and allowlisted writes,
-relationship reads, and log queries. Routes translate inputs into existing
-service dataclasses and serialize service results; they do not access Runtime
-internals. Domain errors retain their stable codes and details in structured
-HTTP error responses.
+relationship reads, log queries, provider management, inference, and explicit
+configuration reload. Routes translate inputs into existing service dataclasses
+and serialize service results; they do not access Runtime internals. Domain
+errors retain their stable codes and details in structured HTTP error responses.
 
 Each `/events` client receives a private subscription created through
 `RuntimeService.subscribe_events()`. Events use the existing structured Phase 3
@@ -350,32 +511,116 @@ execution remains deferred to Medulla.
   Signal Chat with Action-backed responses only.
 - Phase 4E character: Entity-owned per-person relationship state with detached
   RuntimeService, HTTP, and Console inspection.
+- Phase 1F (`0.4-tui_core`): first-party terminal operator interface.
+- Phase 1F: orange Echo identity asset, semantic ANSI/plain rendering, seven web
+  parity surfaces, safe command prompt, and ordinary Signal-routed Chat.
+- Phase 1F: `echo` executable, named tmux workspace, Alt+1–7 view shortcuts,
+  nvim/vi config window, shell window, and no-tmux/snapshot fallbacks.
+- Phase 1F: local and HTTP clients over the shared management boundary plus an
+  ordered, serializable operator-surface registry.
+- Phase 1F: standing requirement that each operator-visible iteration update
+  TUI and web UI together in small, relevant, tested chunks.
+- Phase 5A (`0.5.1`): provider-neutral async intelligence contract.
+- Phase 5A: structured inference request/result, health result, provider
+  metadata, capabilities, and wall-clock plus elapsed timing.
+- Phase 5A: optional embedding/classification protocol seams and a deterministic
+  dependency-free `MockProvider`.
+- Phase 5B (`0.5.2`): centralized, bounded provider selection and fallback.
+- Phase 5B: automatic remote → LAN → offline preference plus isolated remote,
+  LAN, and offline modes.
+- Phase 5B: selected-provider, failed-attempt, latency, error, health, and
+  status inspection with structured exhaustion errors.
+- Phase 5B: mocked coverage of all eight automatic availability permutations
+  and explicit-mode no-fallback behavior.
+- Phase 5C (`0.5.3`): environment/config-driven OpenRouter remote provider.
+- Phase 5C: OpenAI-compatible chat completion request, authenticated key health,
+  configurable model, normalized Echo results, and actual-model/usage metadata.
+- Phase 5C: structured configuration, request, network, API, and response
+  errors; one provider attempt with router-owned fallback only.
+- Phase 5C: secret-safe provider/model/outcome/timing logs and mocked transport
+  coverage with no live API dependency.
+- Phase 5D (`0.5.4`): explicitly configured LAN inference provider.
+- Phase 5D: llama.cpp/OpenAI-compatible chat completions and `/v1/health`, with
+  configurable URL, model, timeout, and optional credential.
+- Phase 5D: normalized results, structured failures, no discovery or internal
+  retry/fallback, and mocked router-owned offline fallback coverage.
+- Phase 5E (`0.5.5`): explicit-path, lazy offline inference fallback.
+- Phase 5E: inspectable model lifecycle, coalesced lazy initialization, safe
+  inference/unload coordination, and idempotent explicit unload.
+- Phase 5E: replaceable local backend boundary and loopback llama-server child
+  adapter with bounded startup, request, and shutdown timeouts.
+- Phase 5E: verified OpenRouter success and health inspection consume no local
+  model RAM/compute, with mocked final-fallback and failure coverage.
+- Phase 5F (`0.5.6`): provider observability and complete fallback integration.
+- Phase 5F: optional RuntimeService router ownership, all-provider health,
+  active provider/model, latest latency, bounded inference attribution, and
+  recent failure inspection.
+- Phase 5F: shared HTTP, developer-command, web Console, TUI, and tmux provider
+  inspection/mode switching for `auto`, `remote`, `lan`, and `offline`.
+- Phase 5F: acceptance coverage for OpenRouter → LAN → offline → restored
+  OpenRouter and proof that every request records its actual serving provider.
+- Phase 5 character: distinct Entity-owned working, episodic, semantic,
+  preference, and relationship memory with provider-continuity coverage.
+- Phase 6A (`0.6.1`): typed, strict TOML configuration and centralized
+  allowlisted environment overrides.
+- Phase 6A: Runtime, logging, all bounded history, provider routing,
+  OpenRouter, LAN, offline, API server, and Console connectivity sections.
+- Phase 6A: startup validation with aggregated dotted-path errors,
+  secret-safe representations, Runtime/router factories, CLI validation, and
+  an environment-safe example file.
+- Phase 6B (`0.6.2`): explicit transactional live configuration reload.
+- Phase 6B: typed live-safe/restart-required change classification, all-or-none
+  application, invalid-candidate preservation, and structured audit events.
+- Phase 6B: live logging, provider routing/preference, and practical history
+  limits through the shared service, HTTP, developer command, Console, and TUI.
+- Phase 6C (`0.6.3`): effective configuration inspection and approved live-safe
+  control with hidden credential fields and clean validation errors.
+- Phase 6C: matching HTTP, developer-command, web Console, TUI, and tmux
+  Configuration surfaces.
+- Phase 6 character: selective importance retention and audited consolidation
+  into semantic, preference, and relationship memory.
+- Phase 6 completion: non-interactive root installer and one root launcher for
+  Core-only, Web Console, terminal Console, or combined startup.
 
 ## In progress
 
-Nothing. Phase 4 is complete through Phase 4E.
+Nothing. Phase 6C is complete. The Phase 1F
+TUI integration requirement remains active across all later phases.
 
 ## Known issues
 
 - Entity state, runtime histories, and structured logs are in memory only.
 - Signal replay storage is not implemented.
 - Actions have no Medulla executor or transport.
-- There is no long-running process host or CLI executable.
-- There are no provider, model, memory, ROS, or robotics integrations.
+- The root launcher provides a development process host; production service
+  supervision, packaging, and deployment remain intentionally unspecified.
+- OpenRouter, explicit LAN inference, and lazy local llama.cpp inference are
+  implemented. Other embedded model integrations are not implemented.
+- The default offline backend requires a separately installed `llama-server`
+  executable; the model file alone is not an executable runtime.
+- Character memory is typed and in memory only; there are no persistence, ROS,
+  or robotics integrations.
 - Bit YAML configuration is not yet loaded into `echo.core.Entity`.
-- There is no character persistence, relationship learning, context builder,
-  consolidation service, behavior policy, or character mutation audit store.
+- Configuration reload covers logging, routing policy, and practical history
+  retention. Provider construction/credentials, Runtime startup, API binding,
+  and Console connectivity still require restart.
+- Handler enable/disable is not yet represented in the typed application
+  schema, so Phase 6B does not attempt unsafe registry mutation.
+- Character memory retention and consolidation are in memory only. There is no
+  durable character persistence, context builder, behavior policy, or durable
+  character audit store.
 - Scheduler `periodic` is a priority class, not a recurring timer facility.
 - Signal payloads must already contain JSON-compatible values for `to_json`.
 
-These are roadmap deferrals, not missing Phase 4E acceptance criteria.
+These are roadmap deferrals, not missing Phase 6C acceptance criteria.
 
 ## Architecture decisions
 
 - `Echo_Plan.md` remains the architectural source of truth.
 - Python 3.11+ and the standard library are sufficient for Echo Core; FastAPI
   is isolated in an optional adapter dependency.
-- Dataclasses represent kernel records; no schema framework is required yet.
+- Dataclasses represent kernel records and the typed configuration schema;
+  TOML parsing uses Python 3.11's `tomllib` without a runtime dependency.
 - `unittest` verifies the project without downloaded test dependencies.
 - The Entity is the public actor abstraction.
 - Decorators only register handlers; the Runtime owns dispatch.
@@ -410,6 +655,11 @@ These are roadmap deferrals, not missing Phase 4E acceptance criteria.
 - The SvelteKit console is a separate optional development surface. It depends
   outward on the HTTP/WebSocket adapter; Echo Core has no Node or browser
   dependency.
+- The TUI is a separate optional presentation adapter with no third-party
+  runtime dependency. It consumes `RuntimeServiceProtocol` locally or the
+  existing HTTP representation remotely and renders detached snapshots.
+- Every operator-visible phase updates TUI and web UI in small tested chunks;
+  neither interface may gain a subsystem-specific private control path.
 - Signal pause/resume is presentation state only; it never pauses Runtime event
   publication or creates an implicit replay buffer.
 - Console Chat is only a Signal source; responses are associated Runtime
@@ -431,19 +681,47 @@ These are roadmap deferrals, not missing Phase 4E acceptance criteria.
 - Echo owns Entity continuity; providers return untrusted cognitive proposals.
 - Identity is independent of inference provider and embodiment.
 - Bit-specific seeds remain outside the generic framework package.
+- OpenRouter configuration comes only from an explicit config object or
+  `OPENROUTER_*` environment values; API keys never enter metadata or logs.
+- OpenRouter makes one request per inference. Echo-level provider fallback is
+  owned only by `ProviderRouter`.
+- LAN inference requires an explicit URL; Echo performs no automatic network
+  discovery. The provider makes one request and leaves fallback to the router.
+- Offline inference requires an explicit model path, remains lazy until selected
+  by the router, and exposes explicit loaded/unloaded state and unload control.
+- Provider selection remains solely in `ProviderRouter`; RuntimeService and
+  operator adapters expose policy and observations without duplicating it.
+- Routing history is bounded, per request, and records the provider that
+  actually served a successful inference.
+- Memory belongs to Entity and is unchanged by provider routing or replacement.
+- Configuration reload validates before mutation, rejects a mixed
+  restart-required candidate as one transaction, and audits every outcome.
+- Configuration inspection is field-oriented and secret-safe; control accepts
+  only live-editable dotted paths and reuses full schema validation.
+- Memory retention is evidence-scored, while consolidation is an explicit Echo
+  decision rather than a direct inference-provider mutation.
 
 ## Next task
 
-Stop after Phase 4E. Do not begin Phase 5 without explicit authorization.
-The CLI executable, providers, persistence, Signal replay, relationship
-learning, and behavior policy remain deferred.
+Stop after Phase 6C. Do not begin Phase 7 persistence or context retrieval,
+handler/signal/transport configuration, Signal replay, broader relationship
+learning, or behavior policy without separate authorization.
 
 ## Important files
 
 - `Echo_Plan.md` — authoritative specification.
+- `install.sh` — non-interactive full Python and Web Console installation.
+- `start.sh` — configured Core launcher with optional Web/TUI flags and child
+  cleanup.
 - `README.md` — setup and minimal Phase 1 example.
 - `pyproject.toml` — package metadata and Python requirement.
 - `src/echo/__init__.py` — public kernel API.
+- `src/echo/config.py` — typed TOML application schema, environment overlays,
+  aggregated validation, logging setup, and Runtime/provider factories.
+- `src/echo/config_reload.py` — explicit transactional reload, change
+  classification, inspection/control, rollback, redaction, and structured
+  results.
+- `echo.example.toml` — secret-free complete configuration example.
 - `src/echo/core/signal.py` — Signal representation and serialization.
 - `src/echo/core/entity.py` — Entity public abstraction.
 - `src/echo/core/handlers.py` — explicit handler registration.
@@ -453,11 +731,49 @@ learning, and behavior policy remain deferred.
 - `src/echo/core/runtime.py` — dispatch and coordination.
 - `src/echo/runtime_service.py` — transport-agnostic runtime service API,
   request/result types, and domain errors.
+- `src/echo/host.py` — configured Runtime/service/FastAPI composition and
+  Uvicorn process entry point.
 - `src/echo/developer_commands.py` — typed developer commands, explicit service
   dispatcher, minimal text parser, and command errors.
 - `src/echo/runtime_events.py` — event categories, subscription envelopes,
   bounded subscriber queues, and non-blocking broker.
+- `src/echo/providers/base.py` — provider-neutral async protocols, capabilities,
+  structured requests/results, metadata, health, and timing.
+- `src/echo/providers/mock.py` — deterministic dependency-free test provider.
+- `src/echo/providers/router.py` — routing modes, bounded selection/fallback,
+  attempt diagnostics, bounded request attribution, health/status inspection,
+  and structured exhaustion.
+- `src/echo/entity/memory.py` — five typed, Entity-owned memory record classes,
+  importance scoring, consolidation validation, and bounded audit histories.
+- `tests/test_phase5f_integration.py` — complete fallback/restore attribution,
+  mode switching, optional-provider, and character continuity acceptance.
+- `tests/test_config.py` — Phase 6A parsing, environment precedence,
+  validation, secret redaction, logging, and factory coverage.
+- `tests/test_config_reload.py` — Phase 6B live application, route preference,
+  restart rejection, invalid-candidate preservation, audit, redaction, and
+  Phase 6C inspection/control coverage.
+- `tests/test_phase6_character.py` — selective memory retention and audited
+  consolidation acceptance/rejection coverage.
+- `src/echo/providers/openrouter.py` — OpenRouter configuration, HTTP transport,
+  inference normalization, authenticated health, errors, and safe logging.
+- `src/echo/providers/lan.py` — explicit LAN/llama.cpp configuration, transport,
+  inference normalization, readiness health, timeouts, and structured errors.
+- `src/echo/providers/offline.py` — explicit local model configuration, lazy
+  lifecycle, unload, backend protocol, and llama-server subprocess adapter.
+- `tests/test_openrouter_provider.py` — mocked request, health, normalization,
+  error, logging, secret-redaction, and router-fallback coverage.
+- `tests/test_lan_inference_provider.py` — mocked URL/configuration, inference,
+  health, timeout/error, no-discovery, and router-fallback coverage.
+- `tests/test_offline_inference_provider.py` — lazy load, remote battery guard,
+  concurrency, state, unload, backend failure, and router-fallback coverage.
 - `src/echo/adapters/fastapi.py` — optional HTTP adapter and app factory.
+- `src/echo/cli.py` — `echoc`, `echoc console`, one-shot commands, and editor
+  handoff.
+- `src/echo/tui/app.py` — semantic renderers and full-screen terminal loop.
+- `src/echo/tui/client.py` — local and HTTP management-plane clients.
+- `src/echo/tui/registry.py` — discoverable operator-surface metadata.
+- `src/echo/tui/tmux.py` — tmux session, windows, and friendly shortcuts.
+- `docs/TUI.md` — terminal usage, parity, boundaries, and integration rule.
 - `console/src/routes/+page.svelte` — initial Echo Console layout, navigation,
   connection lifecycle, live activity, and Signal stream coordination.
 - `console/src/lib/SignalInspector.svelte` — live/history Signal lists, filters,
@@ -469,6 +785,11 @@ learning, and behavior policy remain deferred.
 - `console/src/lib/LogsView.svelte` — structured severity/event-type log view.
 - `console/src/lib/ChatView.svelte` — UserMessage Signal input and
   Action-associated responses.
+- `console/src/lib/ProviderInspector.svelte` — provider health, active route,
+  preference, latency, failure/history inspection, mode controls, and explicit
+  configuration reload/restart reporting.
+- `console/src/lib/ConfigurationInspector.svelte` — secret-safe effective
+  configuration, live/restart labels, validated controls, and field errors.
 - `console/src/lib/echo-client.ts` — HTTP clients, event reconciliation,
   filtering, and display helpers.
 - `console/vite.config.ts` — local HTTP and WebSocket development proxy.

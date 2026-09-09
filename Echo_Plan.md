@@ -967,13 +967,13 @@ Build an Echo CLI using the same runtime API as the Console.
 Initial commands:
 
 echo run bit.yaml
-echo status
+echoc status
 echo attach
 echo inspect bit
-echo signals
-echo tasks
+echoc signals
+echoc tasks
 echo providers
-echo logs
+echoc logs
 
 echo attach should connect to a live Echo runtime.
 
@@ -1495,6 +1495,49 @@ No semantic memory.
 
 ⸻
 
+Phase 1F — Echo TUI Core (`0.4-tui_core`)
+
+Ship a first-party, Hermes-inspired terminal operator interface as a thin
+presentation and control layer over the Echo management plane. The TUI is a
+Core-level interface commitment even though its first implementation follows
+the Phase 4 HTTP/WebSocket baseline so it can verify parity with the existing
+web interface.
+
+The initial surfaces are:
+
+Overview
+Chat
+Signal Inspector
+Task Inspector
+Entity Inspector
+Logs
+
+`echoc console` creates or attaches to the `echo-core` tmux workspace. `echoc`
+does the same when invoked interactively. A single-terminal mode and semantic
+plain-text snapshots remain available when tmux or a full-screen terminal is
+not appropriate. tmux owns layout and process behavior; Echo owns information,
+commands, and control.
+
+The terminal UI must use `RuntimeServiceProtocol`, structured developer
+commands, or a transport adapter over that same contract. It must never edit
+Runtime, Entity, Signal, Task, Action, memory, or character internals directly.
+Chat remains a normal `UserMessage` Signal path and renders only associated
+Actions as responses.
+
+Configuration editing deliberately delegates to nvim/vi. Phase 6A supplies
+shared validation and Phase 6B supplies explicit live-safe reload through the
+management plane. The TUI must not invent a private reload mechanism.
+
+Console Integration Requirement: every later phase that adds an
+operator-visible capability must update both the TUI and web UI in small,
+relevant, independently tested chunks. Each subsystem must expose status,
+inspection, configuration, actions, and live activity through the shared
+management plane, then register discoverable operator-surface metadata. TUI
+and web parity is an acceptance criterion for each such iteration, not a
+cleanup task deferred to the end of a phase.
+
+⸻
+
 Phase 2 — Observability
 
 Add:
@@ -1537,7 +1580,7 @@ influence attention and goal generation; they do not directly force Actions.
 
 ⸻
 
-Phase 4 — Echo Console
+Phase 4 — Echo Web Console
 
 Create:
 

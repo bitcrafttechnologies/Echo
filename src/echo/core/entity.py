@@ -16,6 +16,15 @@ from echo.entity.attention import AttentionCandidate
 from echo.entity.drives import DriveProfile
 from echo.entity.identity import EntityIdentity
 from echo.entity.influence import SignalInfluence
+from echo.entity.memory import (
+    CharacterMemory,
+    MemoryConsolidationDecision,
+    MemoryConsolidationProposal,
+    MemoryImportance,
+    MemoryKind,
+    MemoryRecord,
+    MemoryRetentionDecision,
+)
 from echo.entity.relationships import RelationshipState, RelationshipStore
 from echo.entity.self_model import SelfModel
 from echo.entity.state import InternalState
@@ -40,6 +49,7 @@ class Entity:
         drives: DriveProfile | None = None,
         drive_activations: Mapping[str, float] | None = None,
         relationships: RelationshipStore | None = None,
+        memory: CharacterMemory | None = None,
     ) -> None:
         if not entity_id:
             raise ValueError("entity id must not be empty")
@@ -70,6 +80,8 @@ class Entity:
             relationships, RelationshipStore
         ):
             raise ValueError("relationships must be a RelationshipStore")
+        if memory is not None and not isinstance(memory, CharacterMemory):
+            raise ValueError("memory must be a CharacterMemory")
         self._id = entity_id
         self._identity = identity
         self._traits = traits or TraitProfile()
@@ -93,6 +105,7 @@ class Entity:
         self._relationships = RelationshipStore(
             dict((relationships or RelationshipStore()).relationships)
         )
+        self._memory = (memory or CharacterMemory()).copy()
         self.state: dict[str, Any] = dict(state or {})
         self.handlers = HandlerRegistry()
         self.active_tasks: dict[str, Task] = {}
@@ -145,6 +158,41 @@ class Entity:
     def inspect_relationship(self, subject_id: str) -> RelationshipState | None:
         return self._relationships.get(subject_id)
 
+    @property
+    def memories(self) -> tuple[MemoryRecord, ...]:
+        return self._memory.list()
+
+    def get_memories(
+        self, kind: MemoryKind | str | None = None
+    ) -> tuple[MemoryRecord, ...]:
+        """Return detached immutable records, optionally restricted by type."""
+
+        return self._memory.list(kind)
+
+    def remember(self, record: MemoryRecord) -> None:
+        """Explicit Entity API for accepting an already validated memory."""
+
+        self._memory.add(record)
+
+    def consider_memory(
+        self,
+        record: MemoryRecord,
+        importance: MemoryImportance,
+        *,
+        threshold: float = 0.5,
+    ) -> MemoryRetentionDecision:
+        return self._memory.consider(record, importance, threshold=threshold)
+
+    def consolidate_memory(
+        self,
+        proposal: MemoryConsolidationProposal,
+        *,
+        minimum_confidence: float = 0.65,
+    ) -> MemoryConsolidationDecision:
+        return self._memory.consolidate(
+            proposal, minimum_confidence=minimum_confidence
+        )
+
     def inspect_character(self) -> dict[str, Any]:
         """Return detached Entity-owned character state as structured data."""
 
@@ -161,6 +209,8 @@ class Entity:
                 candidate.to_dict() for candidate in self.attention_candidates
             ],
             "relationships": self._relationships.to_dict(),
+            "memory": self._memory.to_dict(),
+            "memory_audit": self._memory.audit_to_dict(),
         }
 
     def _apply_signal_influence(

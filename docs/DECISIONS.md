@@ -124,3 +124,52 @@ Status: accepted
 The Console sends text as a `UserMessage` through the ordinary Signal HTTP
 operation. It renders responses only from normal Actions associated with that
 Signal. There is no chat-specific runtime method or response shortcut.
+
+## ADR-014: TOML is the Phase 6A application configuration boundary
+
+Status: accepted
+
+Echo uses immutable dataclasses as one typed application schema and Python
+3.11's standard-library `tomllib` as its initial file format. An allowlist maps
+deployment environment variables onto schema fields, with environment values
+taking precedence and credentials excluded from representations. Parsing,
+unknown-key checks, type checks, and cross-field checks report aggregated
+dotted-path issues before Runtime or provider construction. Provider-local
+environment constructors remain compatibility APIs; new application startup
+uses `load_config()` and its factories. Live reload is a separate Phase 6
+decision because it requires lifecycle and management-plane semantics.
+
+## ADR-015: Configuration reload is explicit and transactional
+
+Status: accepted
+
+Phase 6B reload is invoked only through `RuntimeConfigurationManager` and the
+shared Runtime service operation. A fully validated candidate is diffed against
+the active immutable schema and every changed dotted path is classified as
+live-safe or restart-required. Logging, routing policy, and bounded retention
+may change in place. Construction, startup, credentials, API binding, and
+Console connectivity require restart. If one restart-required field changes,
+the entire candidate is rejected without applying its live-safe fields. Every
+outcome emits a secret-safe structured audit event.
+
+## ADR-016: Configuration inspection is field-oriented and secret-safe
+
+Status: accepted
+
+Phase 6C exposes effective settings as dotted field descriptors rather than
+serializing `EchoConfig` directly. Every field is labeled live-editable or
+restart-required. Credential values are always null and disclose only whether
+they are configured. Control requests may name only live-editable fields and
+must rebuild and validate a complete typed candidate before Phase 6B applies
+it. Browser and terminal clients share this service contract.
+
+## ADR-017: Echo decides memory retention and consolidation
+
+Status: accepted
+
+Importance is represented as normalized evidence dimensions with a deterministic
+score and explicit threshold. Consolidation input is only a proposal. Echo
+validates repeated retained episodic evidence, confidence, target scope, and
+contradictions before creating semantic, preference, or relationship memory.
+Accepted and rejected decisions are auditable; providers never receive a direct
+character mutation path.

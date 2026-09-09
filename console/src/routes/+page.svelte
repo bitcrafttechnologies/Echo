@@ -7,6 +7,8 @@
   import EntityInspector from '$lib/EntityInspector.svelte';
   import LogsView from '$lib/LogsView.svelte';
   import ChatView from '$lib/ChatView.svelte';
+  import ProviderInspector from '$lib/ProviderInspector.svelte';
+  import ConfigurationInspector from '$lib/ConfigurationInspector.svelte';
 
   import {
     eventStreamUrl,
@@ -20,7 +22,7 @@
     type SignalHistoryEntry
   } from '$lib/echo-client';
 
-  const navigation = ['Overview', 'Signals', 'Tasks', 'Entity', 'Logs', 'Chat'] as const;
+  const navigation = ['Overview', 'Signals', 'Tasks', 'Entity', 'Providers', 'Configuration', 'Logs', 'Chat'] as const;
   type Section = (typeof navigation)[number];
   type ConnectionState = 'connecting' | 'connected' | 'disconnected';
 
@@ -313,6 +315,10 @@
       <TaskInspector {apiBase} {eventRevision} />
     {:else if activeSection === 'Entity'}
       <EntityInspector {apiBase} {eventRevision} />
+    {:else if activeSection === 'Providers'}
+      <ProviderInspector {apiBase} />
+    {:else if activeSection === 'Configuration'}
+      <ConfigurationInspector {apiBase} />
     {:else if activeSection === 'Logs'}
       <LogsView {apiBase} {eventRevision} />
     {:else if activeSection === 'Chat'}

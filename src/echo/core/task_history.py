@@ -88,6 +88,15 @@ class TaskHistory:
     def __len__(self) -> int:
         return len(self._tasks)
 
+    def resize(self, max_size: int) -> None:
+        """Change retention in place, evicting oldest Tasks if reduced."""
+
+        if isinstance(max_size, bool) or not isinstance(max_size, int) or max_size <= 0:
+            raise ValueError("task history max_size must be a positive integer")
+        self.max_size = max_size
+        while len(self._tasks) > self.max_size:
+            self._tasks.popitem(last=False)
+
     def record(self, task: Task) -> None:
         self._tasks.pop(task.id, None)
         self._tasks[task.id] = task

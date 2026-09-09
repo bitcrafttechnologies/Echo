@@ -15,11 +15,16 @@ from echo import (
     CommandExecutionError,
     CommandParseError,
     CommandValidationError,
+    ConfigInspectCommand,
+    ConfigReloadCommand,
+    ConfigSetCommand,
     DeveloperCommandDispatcher,
     DeveloperCommandError,
     Entity,
     EntityInspectCommand,
     LogsCommand,
+    ProviderModeCommand,
+    ProviderStatusCommand,
     Runtime,
     RuntimeService,
     RuntimeStatusCommand,
@@ -139,6 +144,11 @@ class DeveloperCommandTests(unittest.IsolatedAsyncioTestCase):
             "state get bit": StateGetCommand,
             "state set bit '{\"mode\": \"ready\"}'": StateSetCommand,
             "logs": LogsCommand,
+            "provider status": ProviderStatusCommand,
+            "provider mode auto": ProviderModeCommand,
+            "config inspect": ConfigInspectCommand,
+            "config set providers.mode '\"lan\"'": ConfigSetCommand,
+            "config reload": ConfigReloadCommand,
         }
         for text, expected_type in cases.items():
             with self.subTest(text=text):
@@ -160,6 +170,7 @@ class DeveloperCommandTests(unittest.IsolatedAsyncioTestCase):
             "signal inject observe '[]'",
             "state set bit '{}'",
             "state set bit not-json",
+            "config set history.signals not-json",
             "unknown operation",
         )
         for text in malformed:

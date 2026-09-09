@@ -77,6 +77,11 @@ class CommandName(StrEnum):
     STATE_GET = "state.get"
     STATE_SET = "state.set"
     LOGS = "logs"
+    PROVIDER_STATUS = "provider.status"
+    PROVIDER_MODE = "provider.mode"
+    CONFIG_INSPECT = "config.inspect"
+    CONFIG_SET = "config.set"
+    CONFIG_RELOAD = "config.reload"
 
 
 def _copy(value: Any) -> Any:
@@ -214,6 +219,44 @@ class LogsCommand:
             raise CommandValidationError("query must be a LogQuery")
 
 
+@dataclass(slots=True, kw_only=True, frozen=True)
+class ProviderStatusCommand:
+    name: CommandName = field(default=CommandName.PROVIDER_STATUS, init=False)
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
+class ProviderModeCommand:
+    mode: str
+    name: CommandName = field(default=CommandName.PROVIDER_MODE, init=False)
+
+    def __post_init__(self) -> None:
+        if self.mode not in {"auto", "remote", "lan", "offline"}:
+            raise CommandValidationError(
+                "provider mode must be auto, remote, lan, or offline"
+            )
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
+class ConfigReloadCommand:
+    name: CommandName = field(default=CommandName.CONFIG_RELOAD, init=False)
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
+class ConfigInspectCommand:
+    name: CommandName = field(default=CommandName.CONFIG_INSPECT, init=False)
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
+class ConfigSetCommand:
+    path: str
+    value: Any
+    name: CommandName = field(default=CommandName.CONFIG_SET, init=False)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.path, str) or not self.path.strip():
+            raise CommandValidationError("configuration path must not be empty")
+
+
 DeveloperCommand = (
     RuntimeStatusCommand
     | EntityInspectCommand
@@ -227,6 +270,11 @@ DeveloperCommand = (
     | StateGetCommand
     | StateSetCommand
     | LogsCommand
+    | ProviderStatusCommand
+    | ProviderModeCommand
+    | ConfigInspectCommand
+    | ConfigSetCommand
+    | ConfigReloadCommand
 )
 
 
@@ -265,6 +313,11 @@ class DeveloperCommandDispatcher:
                 StateGetCommand,
                 StateSetCommand,
                 LogsCommand,
+                ProviderStatusCommand,
+                ProviderModeCommand,
+                ConfigInspectCommand,
+                ConfigSetCommand,
+                ConfigReloadCommand,
             ),
         ):
             raise UnknownCommandError(
@@ -322,6 +375,18 @@ class DeveloperCommandDispatcher:
             )
         if isinstance(command, LogsCommand):
             return self._service.get_logs(command.query)
+        if isinstance(command, ProviderStatusCommand):
+            return await self._service.inspect_providers()
+        if isinstance(command, ProviderModeCommand):
+            return await self._service.set_provider_mode(command.mode)
+        if isinstance(command, ConfigInspectCommand):
+            return self._service.inspect_configuration()
+        if isinstance(command, ConfigSetCommand):
+            return self._service.update_configuration(
+                {command.path: command.value}
+            )
+        if isinstance(command, ConfigReloadCommand):
+            return self._service.reload_configuration()
         raise UnknownCommandError("unsupported command schema")
 
 
@@ -354,6 +419,20 @@ def parse_developer_command(text: str) -> DeveloperCommand:
         return ActionListCommand()
     if tokens == ["logs"]:
         return LogsCommand()
+    if tokens == ["provider", "status"]:
+        return ProviderStatusCommand()
+    if len(tokens) == 3 and tokens[:2] == ["provider", "mode"]:
+        return ProviderModeCommand(mode=tokens[2])
+    if tokens == ["config", "reload"]:
+        return ConfigReloadCommand()
+    if tokens == ["config", "inspect"]:
+        return ConfigInspectCommand()
+    if len(tokens) == 4 and tokens[:2] == ["config", "set"]:
+        try:
+            value = json.loads(tokens[3])
+        except json.JSONDecodeError as error:
+            raise CommandParseError("configuration value must be valid JSON") from error
+        return ConfigSetCommand(path=tokens[2], value=value)
     if len(tokens) == 3 and tokens[:2] == ["entity", "inspect"]:
         return EntityInspectCommand(entity_id=tokens[2])
     if len(tokens) == 3 and tokens[:2] == ["signal", "inspect"]:

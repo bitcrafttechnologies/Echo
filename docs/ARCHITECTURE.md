@@ -207,13 +207,148 @@ identity, traits, control state, drives, self-model/embodiment, attention, and
 relationships visibly separate. Relationship learning and persistence remain
 future bounded operations.
 
+Phase 1F adds `echo.tui` as another outward-facing adapter. `LocalEchoClient`
+accepts `RuntimeServiceProtocol` for embedded and fully offline operation;
+`HttpEchoClient` maps the same reads and structured developer-command grammar
+onto the existing HTTP adapter. Renderers consume detached dictionaries only.
+They cannot reach Runtime or Entity internals.
+
+`ConsoleSurfaceRegistry` publishes ordered, transport-safe metadata for the
+currently implemented Overview, Chat, Signals, Tasks, Entity, and Logs
+surfaces. It is the small extension seam later subsystems use to declare
+operator capabilities. Runtime implementation objects and callbacks are
+deliberately absent from registry entries.
+
+tmux is an optional workspace/session owner, not an Echo architecture layer.
+Each tmux view starts the same TUI against the management endpoint; ordinary
+tmux controls remain available. The config window delegates editing to
+nvim/vi. Phase 6A adds shared TOML parsing and startup validation. Phase 6B
+keeps explicit reload behind the shared Runtime service operation, so neither
+terminal nor web presentation acquires a private configuration mutation path.
+
+Phase 6A adds `echo.config` as the application composition boundary. Its typed
+schema owns Runtime startup, logging, bounded histories, provider routing and
+provider-specific settings, API binding, and Console connectivity. TOML values
+are merged with an explicit allowlist of environment overrides and validated
+before factories construct Runtime or provider objects. Core primitives do not
+read the application configuration or process environment.
+
+Phase 6B adds `RuntimeConfigurationManager` at that composition boundary. It
+loads and fully validates a candidate before comparing it with the active typed
+configuration. Logging level/format, provider mode/preference, router history,
+and Runtime history bounds are live-safe. Settings that construct providers,
+bind the API, control startup, or select Console connectivity require restart.
+A reload containing any restart-required change applies nothing; invalid input
+also preserves active state. Every applied, unchanged, rejected, invalid, or
+failed request produces a structured `configuration.reload` Runtime event.
+
+Phase 6C makes this boundary inspectable and controllable without exposing the
+configuration object itself. `ConfigurationInspectionResult` flattens effective
+settings into typed field descriptors. Credentials carry only hidden/configured
+flags and a null value. Live controls accept an allowlisted dotted-path mapping,
+rebuild a complete typed candidate, and reuse Phase 6B validation and atomic
+application. HTTP, web Console, developer commands, and TUI remain adapters
+over that service contract.
+
+Phase 5A adds `echo.providers` as an optional intelligence boundary. The base
+`IntelligenceProvider` protocol exposes asynchronous inference and health
+checks plus immutable provider metadata. Requests and results are detached,
+provider-neutral dataclasses; every inference and health result identifies the
+serving provider and records wall-clock timestamps plus monotonic elapsed time.
+`EmbeddingProvider` and `ClassificationProvider` are separate capability
+protocols, so future operations do not expand the minimum provider contract.
+`MockProvider` supplies deterministic tests without a model dependency. No
+provider is constructed by Core, and Runtime behavior is unchanged when none
+is configured.
+
+Phase 5B adds the only provider-selection policy in `ProviderRouter`. It owns
+three explicit slots and makes one bounded pass per inference: `auto` tries
+the remote OpenRouter slot, then LAN, then offline, while `remote`, `lan`, and
+`offline` modes allow only their named slot. Provider failures are retained as
+structured attempts with provider identity, slot, elapsed time, and error
+reason. Router status
+also reports the latest selected provider and total route latency. Exhausting
+the allowed slots raises `InferenceUnavailableError` with the complete attempt
+record; no retry loop or transport-specific selection logic exists elsewhere.
+Async router health checks inspect the providers allowed by the current mode
+without issuing inference requests.
+
+Phase 5C implements the remote slot with `OpenRouterProvider`. Configuration is
+an explicit immutable object or is read from `OPENROUTER_*` environment
+variables; its API-key field is excluded from representations and provider
+metadata. The provider sends one non-streaming, OpenAI-compatible chat
+completion request and normalizes text, the actually served model, finish
+reason, token usage, provider metadata, and timing into `InferenceResult`.
+`GET /key` supplies an authenticated health check. HTTP, network,
+configuration, request-shape, and response-shape failures use structured
+provider errors that are visible to `ProviderRouter`; the provider contains no
+fallback or retry policy. Standard-library logging records provider/model,
+request ID, outcome, and duration without prompts, authorization headers, or
+API keys. The HTTP transport is replaceable for deterministic tests and the
+default implementation uses `urllib` in `asyncio.to_thread`, keeping the core
+dependency-free.
+
+Phase 5D implements the LAN slot with `LanInferenceProvider`. It accepts only
+an explicit HTTP(S) base URL and normalizes a host root, `/v1` root, or full
+chat-completions URL to the OpenAI-compatible `/v1` API root. There is no
+broadcast, mDNS, subnet scan, or other discovery path. Configuration comes
+from `LanInferenceConfig` or `LAN_INFERENCE_*`/`LLAMA_CPP_*` environment
+values, including model, timeout, and an optional API key. Inference uses one
+non-streaming `/v1/chat/completions` request and normalizes response text,
+served model, usage, finish reason, llama.cpp timing details, provider metadata,
+and client timing. Health uses llama.cpp's `/v1/health` contract: `status: ok`
+is healthy, model-loading `503` is degraded, and connection or other HTTP
+failures are unavailable. Errors are structured and visible to
+`ProviderRouter`; neither retry nor fallback exists inside the provider.
+
+Phase 5E implements the final slot with `OfflineInferenceProvider`. The provider
+requires an explicit model path and starts in `unloaded`; construction, status,
+and health inspection never initialize a model. Only `infer()` calls the lazy
+backend load operation, which means the router's remote and LAN successes do
+not spend local RAM, CPU/GPU time, or battery on the offline model. A lifecycle
+lock coalesces concurrent first loads, and an inference lock prevents explicit
+unload from racing active generation. State is inspectable as unconfigured,
+unloaded, loading, loaded, unloading, or error. `unload()` is idempotent and
+releases backend resources where supported.
+
+`OfflineInferenceBackend` is the clean local-engine boundary. The default
+`LlamaCppServerBackend` lazily starts an owned `llama-server` child on loopback,
+waits for its `/v1/health` readiness, and delegates normalized inference through
+the existing OpenAI-compatible LAN client. It uses argument-vector subprocess
+launching without a shell, supports an explicit executable and extra arguments,
+and terminates then kills only its owned child if graceful shutdown times out.
+Initialization, execution, and unload failures remain structured provider
+errors so `ProviderRouter` can make the sole fallback decision.
+
+Phase 5F makes routing observable without moving policy. `RuntimeService`
+optionally owns one router and exposes inference, all-provider health/status,
+and mode switching. The router retains a bounded record for every inference,
+including the actual serving provider, attempts, mode, latency, and terminal
+failure. HTTP, web, and terminal adapters render this shared snapshot; none
+selects a provider. With no router configured, Core remains usable and the
+service returns an empty provider view plus structured unavailable inference.
+
+The Phase 5 character slice composes `CharacterMemory` into Entity. Working,
+episodic, semantic, preference, and relationship records are distinct immutable
+types. Providers receive no ownership reference and route changes cannot erase
+or replace them. Selection, scoring, consolidation, persistence, and retrieval
+are deliberately outside this Phase 5 boundary.
+
+The Phase 6 character slice adds deterministic `MemoryImportance` scoring and
+explicit retention decisions. Consolidation proposals cannot mutate memory
+directly: Echo requires multiple retained episodic evidence IDs, sufficient
+confidence, valid subject scope, and no contradiction with an existing key
+before creating semantic, preference, or relationship memory. All accepted and
+rejected decisions remain in bounded audit histories owned with the Entity
+memory store.
+
 ## Boundaries
 
 The implemented kernel, service, command, and subscription layers contain no
-LLM, provider routing, persistence, web API, WebSocket, FastAPI, Console, ROS,
-or Medulla transport. FastAPI exists only in the optional outward-facing
-adapter. Actions are structured intent records; execution against the outside
-world belongs to the later Medulla boundary.
+LLM, persistence, ROS, or Medulla transport. Provider contracts and routing,
+FastAPI, and the TUI exist only as optional outward-facing layers.
+Actions are structured intent records; execution against the outside world
+belongs to the later Medulla boundary.
 The Phase 2A `action.executed` observation identifies execution at the Runtime
 intent boundary, not an external side effect.
 
@@ -221,12 +356,12 @@ The implementation favors dataclasses, `asyncio`, explicit method calls, and
 composition. Decorators are only registration helpers.
 
 The amendment adds provider-independent character value types under
-`echo.entity`. Phases 2 and 3 attach identity, traits, self-model, internal
-state, drives, and attention candidates to `echo.core.Entity`; they do not
-persist them or route them through inference. Bit's reference configuration
-remains outside the generic package under `entities/bit/`. This preserves one
-public Entity actor while reserving later character slices for their roadmap
-phases.
+`echo.entity`. Phases 2–5 attach identity, traits, self-model, internal state,
+drives, attention candidates, relationships, and typed memory to
+`echo.core.Entity`; they do not persist them or route ownership through
+inference. Bit's reference configuration remains outside the generic package
+under `entities/bit/`. This preserves one public Entity actor while reserving
+later character slices for their roadmap phases.
 
 Handler matching accepts either a Signal type string or a Signal subclass.
 Class matching uses normal Python `isinstance` behavior, so a base Signal

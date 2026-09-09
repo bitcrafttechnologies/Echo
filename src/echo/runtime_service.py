@@ -7,6 +7,12 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
+from echo.config import ConfigurationError
+from echo.config_reload import (
+    ConfigurationInspectionResult,
+    ConfigurationReloadResult,
+    RuntimeConfigurationManager,
+)
 from echo.core.action_history import ActionHistoryEntry, ActionStatus
 from echo.core.inspection import json_safe
 from echo.core.runtime import Runtime
@@ -19,6 +25,13 @@ from echo.core.task_history import TaskHistoryEntry
 from echo.entity.attention import AttentionCandidate
 from echo.entity.influence import SignalInfluence
 from echo.entity.relationships import RelationshipState
+from echo.providers import (
+    InferenceRequest,
+    InferenceResult,
+    InferenceUnavailableError,
+    ProviderMode,
+    ProviderRouter,
+)
 from echo.runtime_events import (
     InvalidSubscriptionError,
     RuntimeEventSubscription,
@@ -71,6 +84,18 @@ class SignalEmissionError(RuntimeServiceError):
 
 class InvalidCharacterInfluenceError(RuntimeServiceError):
     code = "invalid_character_influence"
+
+
+class InferenceServiceUnavailableError(RuntimeServiceError):
+    code = "inference_unavailable"
+
+
+class ConfigurationReloadUnavailableError(RuntimeServiceError):
+    code = "configuration_reload_unavailable"
+
+
+class ConfigurationValidationServiceError(RuntimeServiceError):
+    code = "invalid_configuration"
 
 
 def _copy(value: Any) -> Any:
@@ -202,6 +227,32 @@ class CharacterStateResult:
 
 
 @dataclass(slots=True, kw_only=True, frozen=True)
+class ProviderInspectionResult:
+    mode: ProviderMode
+    preference: tuple[str, ...]
+    configured_providers: dict[str, dict[str, Any]]
+    health: dict[str, dict[str, Any]]
+    active_provider: dict[str, Any] | None
+    model: str | None
+    last_latency_ms: float | None
+    recent_failures: tuple[dict[str, Any], ...]
+    recent_inferences: tuple[dict[str, Any], ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "mode": self.mode.value,
+            "preference": list(self.preference),
+            "configured_providers": _copy(self.configured_providers),
+            "health": _copy(self.health),
+            "active_provider": _copy(self.active_provider),
+            "model": self.model,
+            "last_latency_ms": self.last_latency_ms,
+            "recent_failures": [_copy(item) for item in self.recent_failures],
+            "recent_inferences": [_copy(item) for item in self.recent_inferences],
+        }
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
 class ApplySignalInfluenceRequest:
     entity_id: str
     signal_id: str
@@ -303,6 +354,22 @@ class RuntimeServiceProtocol(Protocol):
         request: ApplySignalInfluenceRequest,
     ) -> SignalInfluenceResult: ...
 
+    async def infer(self, request: InferenceRequest) -> InferenceResult: ...
+
+    async def inspect_providers(self) -> ProviderInspectionResult: ...
+
+    async def set_provider_mode(
+        self, mode: ProviderMode | str
+    ) -> ProviderInspectionResult: ...
+
+    def reload_configuration(self) -> ConfigurationReloadResult: ...
+
+    def inspect_configuration(self) -> ConfigurationInspectionResult: ...
+
+    def update_configuration(
+        self, values: Mapping[str, Any]
+    ) -> ConfigurationReloadResult: ...
+
 
 class RuntimeService:
     """Stable facade through which adapters and tests control one Runtime."""
@@ -312,6 +379,8 @@ class RuntimeService:
         runtime: Runtime,
         *,
         allowed_state_keys: Mapping[str, Iterable[str]] | None = None,
+        provider_router: ProviderRouter | None = None,
+        configuration_manager: RuntimeConfigurationManager | None = None,
     ) -> None:
         if not isinstance(runtime, Runtime):
             raise InvalidRequestError("runtime must be a Runtime")
@@ -319,7 +388,31 @@ class RuntimeService:
             allowed_state_keys, Mapping
         ):
             raise InvalidRequestError("allowed_state_keys must be a mapping")
+        if provider_router is not None and not isinstance(provider_router, ProviderRouter):
+            raise InvalidRequestError("provider_router must be a ProviderRouter")
+        if configuration_manager is not None and not isinstance(
+            configuration_manager, RuntimeConfigurationManager
+        ):
+            raise InvalidRequestError(
+                "configuration_manager must be a RuntimeConfigurationManager"
+            )
+        if (
+            configuration_manager is not None
+            and configuration_manager.runtime is not runtime
+        ):
+            raise InvalidRequestError(
+                "configuration_manager must own this Runtime"
+            )
+        if (
+            configuration_manager is not None
+            and configuration_manager.provider_router is not provider_router
+        ):
+            raise InvalidRequestError(
+                "configuration_manager must own this ProviderRouter"
+            )
         self._runtime = runtime
+        self._provider_router = provider_router
+        self._configuration_manager = configuration_manager
         try:
             self._allowed_state_keys = {
                 entity_id: frozenset(keys)
@@ -328,6 +421,139 @@ class RuntimeService:
         except TypeError as error:
             raise InvalidRequestError(
                 "allowed state keys must be iterable collections"
+            ) from error
+
+    async def infer(self, request: InferenceRequest) -> InferenceResult:
+        if not isinstance(request, InferenceRequest):
+            raise InvalidRequestError("infer requires an InferenceRequest")
+        if self._provider_router is None:
+            raise InferenceServiceUnavailableError(
+                "no intelligence providers are configured",
+                details={
+                    "request_id": request.request_id,
+                    "mode": ProviderMode.AUTO.value,
+                    "attempts": [],
+                },
+            )
+        try:
+            return await self._provider_router.infer(request)
+        except InferenceUnavailableError as error:
+            details = error.to_dict()
+            details.pop("message", None)
+            details.pop("code", None)
+            raise InferenceServiceUnavailableError(
+                error.reason, details=details
+            ) from error
+
+    async def inspect_providers(self) -> ProviderInspectionResult:
+        router = self._provider_router
+        if router is None:
+            return ProviderInspectionResult(
+                mode=ProviderMode.AUTO,
+                preference=(),
+                configured_providers={},
+                health={},
+                active_provider=None,
+                model=None,
+                last_latency_ms=None,
+                recent_failures=(),
+                recent_inferences=(),
+            )
+        status = router.status()
+        health = await router.health_all()
+        recent = router.recent_inferences(25)
+        failures: list[dict[str, Any]] = []
+        for record in recent:
+            for attempt in record.attempts:
+                if not attempt.succeeded:
+                    failure = attempt.to_dict()
+                    failure.update(
+                        request_id=record.request_id,
+                        mode=record.mode.value,
+                        completed_at=record.completed_at.isoformat(),
+                    )
+                    failures.append(failure)
+        active = status.current_selected_provider
+        return ProviderInspectionResult(
+            mode=status.mode,
+            preference=tuple(slot.value for slot in status.preference),
+            configured_providers={
+                slot.value: metadata.to_dict()
+                for slot, metadata in status.configured_providers
+            },
+            health={slot.value: result.to_dict() for slot, result in health},
+            active_provider=active.to_dict() if active else None,
+            model=active.model if active else None,
+            last_latency_ms=status.latency_ms,
+            recent_failures=tuple(failures[:25]),
+            recent_inferences=tuple(record.to_dict() for record in recent),
+        )
+
+    async def set_provider_mode(
+        self, mode: ProviderMode | str
+    ) -> ProviderInspectionResult:
+        if self._provider_router is None:
+            raise InferenceServiceUnavailableError(
+                "no intelligence providers are configured"
+            )
+        try:
+            requested_mode = ProviderMode(mode)
+            if self._configuration_manager is not None:
+                self._configuration_manager.update(
+                    {"providers.mode": requested_mode.value},
+                    source="provider.mode",
+                )
+            else:
+                self._provider_router.set_mode(requested_mode)
+        except (ConfigurationError, TypeError, ValueError) as error:
+            raise InvalidRequestError(
+                "inference mode cannot be applied",
+                details={"mode": str(mode), "reason": str(error)},
+            ) from error
+        return await self.inspect_providers()
+
+    def reload_configuration(self) -> ConfigurationReloadResult:
+        manager = self._configuration_manager
+        if manager is None:
+            raise ConfigurationReloadUnavailableError(
+                "configuration reload is not configured for this Runtime"
+            )
+        try:
+            return manager.reload()
+        except ConfigurationError as error:
+            details = error.to_dict()
+            details.pop("message", None)
+            details.pop("code", None)
+            raise ConfigurationValidationServiceError(
+                "configuration reload validation failed",
+                details=details,
+            ) from error
+
+    def inspect_configuration(self) -> ConfigurationInspectionResult:
+        manager = self._configuration_manager
+        if manager is None:
+            raise ConfigurationReloadUnavailableError(
+                "configuration inspection is not configured for this Runtime"
+            )
+        return manager.inspect()
+
+    def update_configuration(
+        self, values: Mapping[str, Any]
+    ) -> ConfigurationReloadResult:
+        manager = self._configuration_manager
+        if manager is None:
+            raise ConfigurationReloadUnavailableError(
+                "configuration control is not configured for this Runtime"
+            )
+        try:
+            return manager.update(values)
+        except ConfigurationError as error:
+            details = error.to_dict()
+            details.pop("message", None)
+            details.pop("code", None)
+            raise ConfigurationValidationServiceError(
+                "configuration update validation failed",
+                details=details,
             ) from error
 
     def get_runtime_status(self) -> RuntimeStatusResult:

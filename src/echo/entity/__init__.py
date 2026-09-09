@@ -13,6 +13,20 @@ from echo.entity.attention import AttentionCandidate, AttentionProposal
 from echo.entity.drives import DriveProfile
 from echo.entity.influence import SignalInfluence
 from echo.entity.identity import EntityIdentity
+from echo.entity.memory import (
+    CharacterMemory,
+    CharacterMemoryRecord,
+    EpisodicMemory,
+    MemoryConsolidationDecision,
+    MemoryConsolidationProposal,
+    MemoryImportance,
+    MemoryKind,
+    MemoryRetentionDecision,
+    PreferenceMemory,
+    RelationshipMemory,
+    SemanticMemory,
+    WorkingMemory,
+)
 from echo.entity.relationships import RelationshipState, RelationshipStore
 from echo.entity.self_model import SelfModel
 from echo.entity.state import InternalState
@@ -26,11 +40,23 @@ __all__ = [
     "AttentionProposal",
     "DriveProfile",
     "EntityIdentity",
+    "CharacterMemory",
+    "CharacterMemoryRecord",
+    "EpisodicMemory",
+    "MemoryConsolidationDecision",
+    "MemoryConsolidationProposal",
+    "MemoryImportance",
     "InternalState",
+    "MemoryKind",
+    "MemoryRetentionDecision",
+    "PreferenceMemory",
+    "RelationshipMemory",
     "RelationshipState",
     "RelationshipStore",
     "SelfModel",
+    "SemanticMemory",
     "SignalInfluence",
     "TraitEvidence",
     "TraitProfile",
+    "WorkingMemory",
 ]

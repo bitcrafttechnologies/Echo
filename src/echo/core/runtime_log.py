@@ -22,6 +22,7 @@ class RuntimeEventType(StrEnum):
     STATE_CHANGED = "state.changed"
     RUNTIME_STARTED = "runtime.started"
     RUNTIME_STOPPED = "runtime.stopped"
+    CONFIGURATION_RELOAD = "configuration.reload"
     ERROR = "error"
 
 

@@ -102,6 +102,15 @@ class ActionHistory:
     def __len__(self) -> int:
         return len(self._records)
 
+    def resize(self, max_size: int) -> None:
+        """Change retention in place, evicting oldest Actions if reduced."""
+
+        if isinstance(max_size, bool) or not isinstance(max_size, int) or max_size <= 0:
+            raise ValueError("action history max_size must be a positive integer")
+        self.max_size = max_size
+        while len(self._records) > self.max_size:
+            self._records.popitem(last=False)
+
     def __contains__(self, action_id: str) -> bool:
         return action_id in self._records
 
