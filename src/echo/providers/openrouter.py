@@ -200,6 +200,10 @@ class OpenRouterProvider:
         started = perf_counter()
         body = dict(request.parameters)
         messages: list[dict[str, str]] = []
+        if request.instructions is not None:
+            messages.append(
+                {"role": "system", "content": request.instructions}
+            )
         if request.context:
             messages.append(
                 {

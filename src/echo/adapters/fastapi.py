@@ -66,6 +66,7 @@ class InferenceBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     prompt: str = Field(min_length=1)
+    instructions: str | None = Field(default=None, min_length=1)
     context: dict[str, Any] = Field(default_factory=dict)
     parameters: dict[str, Any] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)

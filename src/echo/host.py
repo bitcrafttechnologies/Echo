@@ -14,6 +14,7 @@ from echo.core.entity import Entity
 from echo.core.runtime import Runtime
 from echo.core.signal import Signal
 from echo.entity.context import CharacterContextBuilder, CharacterContextRequest
+from echo.entity.config import load_entity_seed
 from echo.providers import InferenceRequest, ProviderRouter
 from echo.restart import GracefulRestartCoordinator, RestartTarget
 from echo.runtime_service import RuntimeService
@@ -32,6 +33,8 @@ def selected_config_path(path: str | Path | None = None) -> Path | None:
 def register_user_message_handler(
     entity: Entity,
     provider_router: ProviderRouter,
+    *,
+    character_guidance: str | None = None,
 ) -> None:
     """Route Console chat Signals through inference and record the reply."""
 
@@ -59,6 +62,7 @@ def register_user_message_handler(
         result = await provider_router.infer(
             InferenceRequest(
                 prompt=text.strip(),
+                instructions=character_guidance,
                 context=character_context.to_dict(),
                 metadata={
                     "entity_id": entity.id,
@@ -94,9 +98,15 @@ def build_host(
     config.configure_logging()
     if not config.api.enabled:
         raise RuntimeError("Echo API is disabled by configuration")
-    entity = Entity("bit")
+    bit_directory = Path(__file__).resolve().parents[2] / "entities" / "bit"
+    seed = load_entity_seed(bit_directory)
+    entity = seed.create_entity()
     router = config.create_provider_router()
-    register_user_message_handler(entity, router)
+    register_user_message_handler(
+        entity,
+        router,
+        character_guidance=seed.character_guidance,
+    )
     runtime = config.create_runtime([entity])
     manager = RuntimeConfigurationManager(
         config,
@@ -121,7 +131,11 @@ def build_host(
         generation_config = current_manager.active_config
         fresh_entity = _clone_entity_generation(current_entity)
         fresh_router = generation_config.create_provider_router()
-        register_user_message_handler(fresh_entity, fresh_router)
+        register_user_message_handler(
+            fresh_entity,
+            fresh_router,
+            character_guidance=seed.character_guidance,
+        )
         fresh_runtime = generation_config.create_runtime([fresh_entity])
         fresh_manager = RuntimeConfigurationManager(
             generation_config,

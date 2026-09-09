@@ -130,6 +130,7 @@ class OpenRouterProviderTests(unittest.IsolatedAsyncioTestCase):
         provider = OpenRouterProvider(_config(), transport=transport)
         request = InferenceRequest(
             prompt="Keep the laptop cool",
+            instructions="Speak as Bit, never as the provider.",
             context={"entity_id": "bit", "state": {"fatigue": 0.2}},
             parameters={"temperature": 0.2, "max_tokens": 50},
         )
@@ -151,6 +152,10 @@ class OpenRouterProviderTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             call["json_body"]["messages"],
             [
+                {
+                    "role": "system",
+                    "content": "Speak as Bit, never as the provider.",
+                },
                 {
                     "role": "system",
                     "content": '{"echo_character_context":{"entity_id":"bit","state":{"fatigue":0.2}}}',

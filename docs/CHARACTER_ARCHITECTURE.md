@@ -238,9 +238,10 @@ normalized internal state, immutable drive baselines, bounded drive activation,
 retained attention candidates, and per-person relationship state. Runtime
 inspection and `RuntimeService` expose detached views. Explicit Signal-linked influence requests validate
 dimensions atomically, clamp state and activation, and allow drives to affect
-attention scoring without creating Actions. Durable audit storage,
-Bit-specific configuration loading, and behavior policy remain assigned to
-later phases.
+attention scoring without creating Actions. Durable audit storage and behavior
+policy remain assigned to later phases. The configured host loads Bit's reviewed
+identity, traits, drives, and character guidance at startup; these seed values
+do not replace Echo-owned learned state.
 Phase 6 adds normalized selective-retention evidence and Echo-owned
 consolidation proposals. Repeated retained episodes may form semantic,
 preference, or relationship memory only after confidence, scope, evidence, and

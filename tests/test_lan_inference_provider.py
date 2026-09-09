@@ -137,6 +137,7 @@ class LanInferenceProviderTests(unittest.IsolatedAsyncioTestCase):
         )
         request = InferenceRequest(
             prompt="Answer over the LAN",
+            instructions="Speak as Bit, never as the provider.",
             context={"entity_id": "bit", "goals": ["stay-helpful"]},
             parameters={"temperature": 0.1, "max_tokens": 40},
         )
@@ -155,6 +156,10 @@ class LanInferenceProviderTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             call["json_body"]["messages"],
             [
+                {
+                    "role": "system",
+                    "content": "Speak as Bit, never as the provider.",
+                },
                 {
                     "role": "system",
                     "content": '{"echo_character_context":{"entity_id":"bit","goals":["stay-helpful"]}}',

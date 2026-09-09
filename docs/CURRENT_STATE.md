@@ -215,8 +215,9 @@ architecture and adds its provider-independent base vocabulary. Phase 2 now
 composes identity, traits, and self-model into the Entity. Phase 3 now composes
 internal state, drive baselines and activation, and attention candidates.
 Phase 6 now supports evidence-based relationship-memory consolidation. Broader
-relationship learning and Bit-specific configuration loading remain later work;
-the checked-in Bit files are still reference scaffolding.
+relationship learning remains later work. The configured host now loads Bit's
+checked-in identity, traits, drives, and character guidance as versioned startup
+seed configuration.
 
 The public package exports:
 
@@ -673,6 +674,9 @@ execution remains deferred to Medulla.
 - Phase 7 character: bounded provider-neutral `CharacterContextBuilder`,
   relevant state/relationship/memory retrieval, inference integration, and
   character reconstruction across development restart.
+- The configured host loads Bit's versioned seed files and sends character
+  guidance as an authoritative provider system instruction, preventing provider
+  model/vendor identity from replacing Bit's identity.
 
 ## In progress
 
@@ -694,7 +698,6 @@ TUI integration requirement remains active across all later phases.
   executable; the model file alone is not an executable runtime.
 - Character memory is typed and in memory only; there are no persistence, ROS,
   or robotics integrations.
-- Bit YAML configuration is not yet loaded into `echo.core.Entity`.
 - Configuration reload covers logging, routing policy, and practical history
   retention. Provider construction/credentials, Runtime startup, API binding,
   and Console connectivity still require restart.

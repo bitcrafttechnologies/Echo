@@ -60,6 +60,7 @@ from echo.entity.context import (
     CharacterContextBuilder,
     CharacterContextRequest,
 )
+from echo.entity.config import EntitySeed, EntitySeedError, load_entity_seed
 from echo.entity.drives import DriveProfile
 from echo.entity.influence import SignalInfluence
 from echo.entity.memory import (
@@ -275,6 +276,8 @@ __all__ = [
     "DeveloperCommandDispatcher",
     "DeveloperCommandError",
     "Entity",
+    "EntitySeed",
+    "EntitySeedError",
     "EchoConfig",
     "EntityIdentity",
     "EntityResult",
@@ -319,6 +322,7 @@ __all__ = [
     "LogQuery",
     "LogResult",
     "LoggingConfig",
+    "load_entity_seed",
     "MemoryKind",
     "MemoryRetentionDecision",
     "LogsCommand",

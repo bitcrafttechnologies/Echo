@@ -135,6 +135,7 @@ class InferenceRequest:
     """Provider-neutral text inference input assembled by Echo."""
 
     prompt: str
+    instructions: str | None = None
     context: Mapping[str, Any] = field(default_factory=dict)
     parameters: Mapping[str, Any] = field(default_factory=dict)
     metadata: Mapping[str, Any] = field(default_factory=dict)
@@ -143,6 +144,8 @@ class InferenceRequest:
 
     def __post_init__(self) -> None:
         _require_text(self.prompt, "prompt")
+        if self.instructions is not None:
+            _require_text(self.instructions, "instructions")
         _require_text(self.request_id, "request_id")
         _require_aware(self.created_at, "created_at")
         object.__setattr__(self, "context", _immutable_mapping(self.context))
@@ -153,6 +156,7 @@ class InferenceRequest:
         return {
             "request_id": self.request_id,
             "prompt": self.prompt,
+            "instructions": self.instructions,
             "context": _mapping_to_dict(self.context),
             "parameters": _mapping_to_dict(self.parameters),
             "metadata": _mapping_to_dict(self.metadata),
