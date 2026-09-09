@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, MutableMapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
@@ -28,6 +28,13 @@ from echo.entity.memory import (
 from echo.entity.relationships import RelationshipState, RelationshipStore
 from echo.entity.self_model import SelfModel
 from echo.entity.state import InternalState
+from echo.entity.state_store import (
+    EntityStateSnapshot,
+    InMemoryStateStore,
+    StateCategory,
+    StateStore,
+    StateView,
+)
 from echo.entity.traits import TraitProfile
 
 if TYPE_CHECKING:
@@ -50,6 +57,7 @@ class Entity:
         drive_activations: Mapping[str, float] | None = None,
         relationships: RelationshipStore | None = None,
         memory: CharacterMemory | None = None,
+        state_store: StateStore | None = None,
     ) -> None:
         if not entity_id:
             raise ValueError("entity id must not be empty")
@@ -106,7 +114,20 @@ class Entity:
             dict((relationships or RelationshipStore()).relationships)
         )
         self._memory = (memory or CharacterMemory()).copy()
-        self.state: dict[str, Any] = dict(state or {})
+        self._state_store = state_store or InMemoryStateStore()
+        if not isinstance(self._state_store, StateStore):
+            raise TypeError("state_store must implement StateStore")
+        self.state: MutableMapping[str, Any] = StateView(
+            self._state_store, self._id, StateCategory.SESSION
+        )
+        if state is not None:
+            self._state_store.save(
+                self._id,
+                {
+                    **self._state_store.load(self._id),
+                    StateCategory.SESSION: dict(state),
+                },
+            )
         self.handlers = HandlerRegistry()
         self.active_tasks: dict[str, Task] = {}
         self._runtime: Runtime | None = None
@@ -154,6 +175,62 @@ class Entity:
         """Return detached per-person social-state snapshots."""
 
         return self._relationships.list()
+
+    @property
+    def state_store(self) -> StateStore:
+        """Return the storage boundary backing this Entity's ordinary state."""
+
+        return self._state_store
+
+    def get_state(
+        self,
+        key: str,
+        *,
+        category: StateCategory | str = StateCategory.SESSION,
+        default: Any = None,
+    ) -> Any:
+        return self._state_store.get(
+            self.id, key, category=category, default=default
+        )
+
+    def set_state(
+        self,
+        key: str,
+        value: Any,
+        *,
+        category: StateCategory | str = StateCategory.SESSION,
+    ) -> None:
+        self._state_store.set(self.id, key, value, category=category)
+
+    def delete_state(
+        self,
+        key: str,
+        *,
+        category: StateCategory | str = StateCategory.SESSION,
+    ) -> bool:
+        return self._state_store.delete(self.id, key, category=category)
+
+    def list_state(
+        self,
+        *,
+        category: StateCategory | str = StateCategory.SESSION,
+    ) -> dict[str, Any]:
+        return self._state_store.list(self.id, category=category)
+
+    def snapshot_state(self) -> dict[StateCategory, dict[str, Any]]:
+        return self._state_store.snapshot(self.id)
+
+    def load_state(self) -> dict[StateCategory, dict[str, Any]]:
+        """Load a detached complete Entity state through its store."""
+
+        return self._state_store.load(self.id)
+
+    def save_state(self, state: EntityStateSnapshot | None = None) -> None:
+        """Save a complete Entity state through its store."""
+
+        self._state_store.save(
+            self.id, self.snapshot_state() if state is None else state
+        )
 
     def inspect_relationship(self, subject_id: str) -> RelationshipState | None:
         return self._relationships.get(subject_id)

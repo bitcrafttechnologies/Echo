@@ -99,6 +99,8 @@ class ConfigurationValidationServiceError(RuntimeServiceError):
 
 
 def _copy(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        value = dict(value)
     try:
         return deepcopy(value)
     except Exception:

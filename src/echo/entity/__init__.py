@@ -30,6 +30,7 @@ from echo.entity.memory import (
 from echo.entity.relationships import RelationshipState, RelationshipStore
 from echo.entity.self_model import SelfModel
 from echo.entity.state import InternalState
+from echo.entity.state_store import InMemoryStateStore, StateCategory, StateStore
 from echo.entity.traits import TraitEvidence, TraitProfile
 
 __all__ = [
@@ -47,6 +48,7 @@ __all__ = [
     "MemoryConsolidationProposal",
     "MemoryImportance",
     "InternalState",
+    "InMemoryStateStore",
     "MemoryKind",
     "MemoryRetentionDecision",
     "PreferenceMemory",
@@ -54,6 +56,8 @@ __all__ = [
     "RelationshipState",
     "RelationshipStore",
     "SelfModel",
+    "StateCategory",
+    "StateStore",
     "SemanticMemory",
     "SignalInfluence",
     "TraitEvidence",

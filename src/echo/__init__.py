@@ -74,6 +74,7 @@ from echo.entity.memory import (
 from echo.entity.relationships import RelationshipState, RelationshipStore
 from echo.entity.self_model import SelfModel
 from echo.entity.state import InternalState
+from echo.entity.state_store import InMemoryStateStore, StateCategory, StateStore
 from echo.entity.traits import TraitEvidence, TraitProfile
 from echo.developer_commands import (
     ActionListCommand,
@@ -262,6 +263,7 @@ __all__ = [
     "HistoryConfig",
     "InvalidTaskTransition",
     "InMemoryLogSink",
+    "InMemoryStateStore",
     "InvalidRequestError",
     "InvalidCharacterInfluenceError",
     "InternalState",
@@ -375,6 +377,8 @@ __all__ = [
     "TaskStatus",
     "StateResult",
     "StateGetCommand",
+    "StateCategory",
+    "StateStore",
     "StateSetCommand",
     "StateUpdateNotAllowedError",
     "SubscriptionClosedError",

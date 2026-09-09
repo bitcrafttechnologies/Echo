@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from collections import deque
 from copy import deepcopy
 from inspect import isawaitable
@@ -32,6 +32,7 @@ from echo.core.signal_history import (
 from echo.core.task import Task, TaskStatus
 from echo.core.task_history import TaskHistory, TaskHistoryEntry
 from echo.entity.influence import SignalInfluence
+from echo.entity.state_store import StateCategory
 from echo.runtime_events import (
     RuntimeEventBroker,
     RuntimeEventSubscription,
@@ -566,7 +567,7 @@ class Runtime:
         completed = asyncio.Event()
         if execution is not None:
             self._active_task_runs[task.id] = (execution, completed)
-        state_before = self._copy_state(entity.state)
+        state_before = self._copy_entity_state(entity)
         task.start()
         self._log_task_status(task, signal, "pending")
         try:
@@ -676,40 +677,62 @@ class Runtime:
         entity: Entity,
         signal: Signal,
         task: Task,
-        before: dict[str, Any],
+        before: dict[StateCategory, dict[str, Any]],
     ) -> None:
         try:
-            after = self._copy_state(entity.state)
-            keys = before.keys() | after.keys()
-            changes: dict[str, dict[str, Any]] = {}
-            for key in keys:
-                if key not in before:
-                    changes[key] = {"operation": "added", "after": after[key]}
-                elif key not in after:
-                    changes[key] = {"operation": "removed", "before": before[key]}
-                elif before[key] != after[key]:
-                    changes[key] = {
-                        "operation": "updated",
-                        "before": before[key],
-                        "after": after[key],
-                    }
-            if changes:
-                self._log(
-                    RuntimeEventType.STATE_CHANGED,
-                    entity_id=entity.id,
-                    signal_id=signal.id,
-                    task_id=task.id,
-                    metadata={"changes": changes},
-                )
+            after = self._copy_entity_state(entity)
+            for category in StateCategory:
+                category_before = before[category]
+                category_after = after[category]
+                keys = category_before.keys() | category_after.keys()
+                changes: dict[str, dict[str, Any]] = {}
+                for key in keys:
+                    if key not in category_before:
+                        changes[key] = {
+                            "operation": "added",
+                            "after": category_after[key],
+                        }
+                    elif key not in category_after:
+                        changes[key] = {
+                            "operation": "removed",
+                            "before": category_before[key],
+                        }
+                    elif category_before[key] != category_after[key]:
+                        changes[key] = {
+                            "operation": "updated",
+                            "before": category_before[key],
+                            "after": category_after[key],
+                        }
+                if changes:
+                    metadata: dict[str, Any] = {"changes": changes}
+                    if category is not StateCategory.SESSION:
+                        metadata["category"] = category.value
+                    self._log(
+                        RuntimeEventType.STATE_CHANGED,
+                        entity_id=entity.id,
+                        signal_id=signal.id,
+                        task_id=task.id,
+                        metadata=metadata,
+                    )
         except Exception:
             pass
 
+    @classmethod
+    def _copy_entity_state(
+        cls, entity: Entity
+    ) -> dict[StateCategory, dict[str, Any]]:
+        return {
+            category: cls._copy_state(entity.list_state(category=category))
+            for category in StateCategory
+        }
+
     @staticmethod
-    def _copy_state(state: dict[str, Any]) -> dict[str, Any]:
+    def _copy_state(state: Mapping[str, Any]) -> dict[str, Any]:
+        data = dict(state)
         try:
-            return deepcopy(state)
+            return deepcopy(data)
         except Exception:
-            return state.copy()
+            return data.copy()
 
     def _log(
         self,

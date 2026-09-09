@@ -2,7 +2,7 @@
 
 ## Current implementation
 
-Echo through Phase 6C plus the `0.4-tui_core` interface track consists of a
+Echo through Phase 7A plus the `0.4-tui_core` interface track consists of a
 minimal, standard-library Python kernel, an optional FastAPI HTTP and WebSocket
 adapter, and a separate SvelteKit development console shell. The documented,
 transport-agnostic runtime
@@ -10,6 +10,17 @@ contract, structured developer commands, and live event subscriptions remain
 the only control boundary used by the transport and presentation layers. Phase
 3 character state, drives, Signal influence, and attention candidates, plus
 Phase 4 per-person relationship state, are implemented in memory.
+
+Phase 7A introduces the small, runtime-checkable `StateStore` boundary between
+Entity state access and storage. Ordinary state is explicitly separated into
+`ephemeral`, `session`, and `persistent` categories. The interface supports
+get, set, delete, category listing, complete snapshots, and whole-Entity
+load/save. `InMemoryStateStore` remains the dependency-free default, while an
+injected store can back an Entity without changing handler code. The existing
+`Entity.state` mutable mapping remains as the session-state compatibility view;
+new category-aware Entity methods expose all three lifetimes. Handler mutations
+in every category retain causal `state.changed` logging. This phase does not add
+SQLite, restart persistence, or semantic-memory persistence.
 
 Phase 6A adds the single typed `EchoConfig` application schema and a TOML
 loader based on Python's standard-library `tomllib`. Nested sections cover
@@ -587,15 +598,24 @@ execution remains deferred to Medulla.
   into semantic, preference, and relationship memory.
 - Phase 6 completion: non-interactive root installer and one root launcher for
   Core-only, Web Console, terminal Console, or combined startup.
+- Phase 7 base branch (`0.7`) established from completed Phase 6C.
+- Phase 7A (`0.7.1`): replaceable `StateStore` abstraction and default
+  `InMemoryStateStore`.
+- Phase 7A: get, set, delete, list/snapshot, and whole-Entity load/save across
+  ephemeral, session, and persistent categories.
+- Phase 7A: compatible `Entity.state` session mapping plus category-aware Entity
+  access and causal state-change observability for all categories.
 
 ## In progress
 
-Nothing. Phase 6C is complete. The Phase 1F
+Nothing. Phase 7A is complete. The Phase 1F
 TUI integration requirement remains active across all later phases.
 
 ## Known issues
 
-- Entity state, runtime histories, and structured logs are in memory only.
+- The StateStore seam is implemented, but the available implementation is in
+  memory only; SQLite and restart persistence remain Phase 7B work.
+- Runtime histories and structured logs are in memory only.
 - Signal replay storage is not implemented.
 - Actions have no Medulla executor or transport.
 - The root launcher provides a development process host; production service
@@ -618,7 +638,7 @@ TUI integration requirement remains active across all later phases.
 - Scheduler `periodic` is a priority class, not a recurring timer facility.
 - Signal payloads must already contain JSON-compatible values for `to_json`.
 
-These are roadmap deferrals, not missing Phase 6C acceptance criteria.
+These are roadmap deferrals, not missing Phase 7A acceptance criteria.
 
 ## Architecture decisions
 
@@ -706,12 +726,20 @@ These are roadmap deferrals, not missing Phase 6C acceptance criteria.
   only live-editable dotted paths and reuses full schema validation.
 - Memory retention is evidence-scored, while consolidation is an explicit Echo
   decision rather than a direct inference-provider mutation.
+- Entity ordinary state depends on the small `StateStore` protocol rather than
+  an embedded dictionary. Session is the compatibility default, while
+  ephemeral and persistent are explicit categories.
+- StateStore collection reads and whole-Entity loads are detached snapshots;
+  whole-Entity saves replace one Entity atomically at the abstraction boundary.
+- All three ordinary-state categories remain observable when changed during a
+  handler. Session-state event metadata remains backward compatible; other
+  categories add an explicit category field.
 
 ## Next task
 
-Stop after Phase 6C. Do not begin Phase 7 persistence or context retrieval,
-handler/signal/transport configuration, Signal replay, broader relationship
-learning, or behavior policy without separate authorization.
+Stop after Phase 7A. Do not begin SQLite persistence, restart restoration,
+semantic-memory persistence, context retrieval, Signal replay, or behavior
+policy without separate authorization.
 
 ## Important files
 
@@ -730,6 +758,8 @@ learning, or behavior policy without separate authorization.
 - `echo.example.toml` — secret-free complete configuration example.
 - `src/echo/core/signal.py` — Signal representation and serialization.
 - `src/echo/core/entity.py` — Entity public abstraction.
+- `src/echo/entity/state_store.py` — StateStore protocol, state lifetime
+  categories, in-memory implementation, and session compatibility view.
 - `src/echo/core/handlers.py` — explicit handler registration.
 - `src/echo/core/task.py` — Task data and lifecycle transitions.
 - `src/echo/core/action.py` — structured Action intent.
