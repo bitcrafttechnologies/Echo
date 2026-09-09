@@ -1,19 +1,42 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import chdir
+import os
 from pathlib import Path
 import sys
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from echo import Entity, MockProvider, ProviderRouter, Runtime, Signal, load_entity_seed
-from echo.host import build_host, register_user_message_handler
+from echo.host import (
+    build_host,
+    register_user_message_handler,
+    selected_entity_seed_path,
+)
 
 
 class HostChatHandlerTests(unittest.TestCase):
+    def test_installed_host_resolves_launcher_entity_root(self) -> None:
+        with TemporaryDirectory() as temporary_directory:
+            entity_root = Path(temporary_directory) / "entities"
+            bit_directory = entity_root / "bit"
+            bit_directory.mkdir(parents=True)
+            unrelated_directory = Path(temporary_directory) / "elsewhere"
+            unrelated_directory.mkdir()
+
+            with (
+                patch.dict(os.environ, {"ECHO_ENTITY_ROOT": str(entity_root)}),
+                chdir(unrelated_directory),
+            ):
+                selected = selected_entity_seed_path("bit")
+
+            self.assertEqual(selected, bit_directory.resolve())
+
     def test_configured_host_starts_with_bit_seed(self) -> None:
         with TemporaryDirectory() as temporary_directory:
             config_path = Path(temporary_directory) / "echo.toml"

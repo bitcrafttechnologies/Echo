@@ -82,6 +82,7 @@ if [[ "${OPEN_WEB}" == true && ! -d "${PROJECT_ROOT}/console/node_modules" ]]; t
 fi
 
 cd "${PROJECT_ROOT}"
+export ECHO_ENTITY_ROOT="${ECHO_ENTITY_ROOT:-${PROJECT_ROOT}/entities}"
 
 # The project-local dotenv file is an optional secret overlay. It is ignored by
 # git and loaded before Echo validates its TOML configuration. Explicit process

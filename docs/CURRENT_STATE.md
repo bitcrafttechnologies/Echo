@@ -677,6 +677,8 @@ execution remains deferred to Medulla.
 - The configured host loads Bit's versioned seed files and sends character
   guidance as an authoritative provider system instruction, preventing provider
   model/vendor identity from replacing Bit's identity.
+- The project launcher supplies the canonical Entity seed root explicitly so a
+  non-editable `.venv` installation resolves Bit's files from the checkout.
 
 ## In progress
 

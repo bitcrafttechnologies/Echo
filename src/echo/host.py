@@ -14,7 +14,7 @@ from echo.core.entity import Entity
 from echo.core.runtime import Runtime
 from echo.core.signal import Signal
 from echo.entity.context import CharacterContextBuilder, CharacterContextRequest
-from echo.entity.config import load_entity_seed
+from echo.entity.config import EntitySeedError, load_entity_seed
 from echo.providers import InferenceRequest, ProviderRouter
 from echo.restart import GracefulRestartCoordinator, RestartTarget
 from echo.runtime_service import RuntimeService
@@ -28,6 +28,41 @@ def selected_config_path(path: str | Path | None = None) -> Path | None:
     if DEFAULT_CONFIG_PATH.is_file():
         return DEFAULT_CONFIG_PATH
     return None
+
+
+def selected_entity_seed_path(
+    entity_id: str,
+    *,
+    config_path: str | Path | None = None,
+) -> Path:
+    """Resolve project-level Entity seeds from source or an installed host."""
+
+    candidates: list[Path] = []
+    configured_root = os.environ.get("ECHO_ENTITY_ROOT")
+    if configured_root:
+        candidates.append(Path(configured_root) / entity_id)
+    if config_path is not None:
+        candidates.append(
+            Path(config_path).resolve().parent / "entities" / entity_id
+        )
+    candidates.extend(
+        (
+            Path.cwd() / "entities" / entity_id,
+            Path(__file__).resolve().parents[2] / "entities" / entity_id,
+        )
+    )
+    checked: list[Path] = []
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        if resolved in checked:
+            continue
+        checked.append(resolved)
+        if resolved.is_dir():
+            return resolved
+    locations = ", ".join(str(candidate) for candidate in checked)
+    raise EntitySeedError(
+        f"cannot locate Entity seed '{entity_id}'; checked: {locations}"
+    )
 
 
 def register_user_message_handler(
@@ -98,7 +133,7 @@ def build_host(
     config.configure_logging()
     if not config.api.enabled:
         raise RuntimeError("Echo API is disabled by configuration")
-    bit_directory = Path(__file__).resolve().parents[2] / "entities" / "bit"
+    bit_directory = selected_entity_seed_path("bit", config_path=config_path)
     seed = load_entity_seed(bit_directory)
     entity = seed.create_entity()
     router = config.create_provider_router()
@@ -174,7 +209,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         app, config, runtime, service = build_host(arguments.config)
-    except (ConfigurationError, RuntimeError) as error:
+    except (ConfigurationError, EntitySeedError, RuntimeError) as error:
         parser.exit(1, f"Echo could not start: {error}\n")
     try:
         uvicorn.run(app, host=config.api.host, port=config.api.port)
