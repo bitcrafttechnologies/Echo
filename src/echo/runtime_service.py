@@ -119,12 +119,16 @@ class RuntimeStatusResult:
     runtime_id: str
     status: str
     uptime_seconds: float
+    accepting_work: bool = True
+    restart: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "runtime_id": self.runtime_id,
             "status": self.status,
             "uptime_seconds": self.uptime_seconds,
+            "accepting_work": self.accepting_work,
+            "restart": _copy(self.restart),
         }
 
 
@@ -564,6 +568,8 @@ class RuntimeService:
             runtime_id=snapshot["runtime_id"],
             status=snapshot["runtime_status"],
             uptime_seconds=snapshot["uptime_seconds"],
+            accepting_work=snapshot["accepting_work"],
+            restart=snapshot["restart"],
         )
 
     def get_entities(self) -> tuple[EntityResult, ...]:

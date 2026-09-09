@@ -363,6 +363,11 @@ class OfflineInferenceProvider:
         async with self._inference_lock:
             return await self._unload_when_idle()
 
+    async def aclose(self) -> None:
+        """Release the local backend during graceful shutdown."""
+
+        await self.unload()
+
     async def _unload_when_idle(self) -> OfflineProviderStatus:
         async with self._lifecycle_lock:
             if self._config.model_path is None:

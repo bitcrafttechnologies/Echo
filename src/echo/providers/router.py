@@ -8,6 +8,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import StrEnum
+from inspect import isawaitable
 from time import perf_counter
 from typing import Any
 
@@ -16,6 +17,7 @@ from echo.providers.base import (
     InferenceResult,
     IntelligenceProvider,
     ProviderCapability,
+    ProviderError,
     ProviderHealthResult,
     ProviderHealthStatus,
     ProviderMetadata,
@@ -160,6 +162,14 @@ class InferenceUnavailableError(ProviderUnavailableError):
         }
 
 
+class ProviderNotAcceptingRequestsError(ProviderUnavailableError):
+    """The provider router is quiescing or closed for restart."""
+
+
+class ProviderShutdownError(ProviderError):
+    """One or more configured providers failed to close cleanly."""
+
+
 class ProviderRouter:
     """Select one allowed provider and perform a single bounded fallback pass."""
 
@@ -212,6 +222,7 @@ class ProviderRouter:
         self._request_id: str | None = None
         self._history: deque[InferenceRouteRecord] = deque(maxlen=history_limit)
         self._inference_lock = asyncio.Lock()
+        self._accepting_requests = True
 
     @property
     def metadata(self) -> ProviderMetadata:
@@ -240,6 +251,46 @@ class ProviderRouter:
     @property
     def error_reason(self) -> str | None:
         return self._error_reason
+
+    @property
+    def accepting_requests(self) -> bool:
+        return self._accepting_requests
+
+    def quiesce(self) -> None:
+        """Reject new inference while an in-flight request may finish."""
+
+        self._accepting_requests = False
+
+    async def aclose(self) -> None:
+        """Wait for current inference, then close every capable provider."""
+
+        self.quiesce()
+        errors: list[str] = []
+        async with self._inference_lock:
+            for provider in self._providers.values():
+                method = next(
+                    (
+                        candidate
+                        for name in ("aclose", "close", "unload")
+                        if callable(
+                            candidate := getattr(provider, name, None)
+                        )
+                    ),
+                    None,
+                )
+                if method is None:
+                    continue
+                try:
+                    outcome = method()
+                    if isawaitable(outcome):
+                        await outcome
+                except Exception as error:
+                    errors.append(
+                        f"{provider.metadata.provider_id}: "
+                        f"{type(error).__name__}: {error}"
+                    )
+        if errors:
+            raise ProviderShutdownError("; ".join(errors))
 
     def set_mode(self, mode: ProviderMode | str) -> None:
         self._mode = ProviderMode(mode)
@@ -330,8 +381,10 @@ class ProviderRouter:
     async def infer(self, request: InferenceRequest) -> InferenceResult:
         if not isinstance(request, InferenceRequest):
             raise TypeError("request must be an InferenceRequest")
+        self._require_accepting_requests()
 
         async with self._inference_lock:
+            self._require_accepting_requests()
             route_started = perf_counter()
             route_mode = self._mode
             self._reset_route_state(request.request_id)
@@ -403,6 +456,12 @@ class ProviderRouter:
                 attempts=self._attempts,
                 latency_ms=self._latency_ms,
                 reason=self._error_reason,
+            )
+
+    def _require_accepting_requests(self) -> None:
+        if not self._accepting_requests:
+            raise ProviderNotAcceptingRequestsError(
+                "provider router is not accepting new requests"
             )
 
     async def health(self) -> ProviderHealthResult:

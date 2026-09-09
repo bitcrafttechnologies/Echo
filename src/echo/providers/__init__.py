@@ -68,6 +68,8 @@ from echo.providers.router import (
     ProviderMode,
     ProviderRouter,
     ProviderRouterStatus,
+    ProviderNotAcceptingRequestsError,
+    ProviderShutdownError,
     ProviderSlot,
 )
 
@@ -129,6 +131,8 @@ __all__ = [
     "ProviderMode",
     "ProviderRouter",
     "ProviderRouterStatus",
+    "ProviderNotAcceptingRequestsError",
+    "ProviderShutdownError",
     "ProviderSlot",
     "ProviderTiming",
     "ProviderUnavailableError",

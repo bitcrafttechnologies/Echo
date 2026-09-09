@@ -31,7 +31,7 @@ from echo.core.action import Action
 from echo.core.action_history import ActionHistory, ActionHistoryEntry, ActionStatus
 from echo.core.entity import Entity
 from echo.core.handlers import HandlerRegistry
-from echo.core.runtime import Runtime
+from echo.core.runtime import Runtime, RuntimeNotAcceptingWorkError
 from echo.core.runtime_log import (
     InMemoryLogSink,
     LogSink,
@@ -149,6 +149,14 @@ from echo.runtime_events import (
     RuntimeSubscriptionRequest,
     SubscriptionClosedError,
 )
+from echo.restart import (
+    GracefulRestartCoordinator,
+    RestartError,
+    RestartResult,
+    RestartStatus,
+    RestartTarget,
+    RestartTaskPolicy,
+)
 from echo.providers import (
     ClassificationProvider,
     ClassificationRequest,
@@ -204,6 +212,8 @@ from echo.providers import (
     ProviderMode,
     ProviderRouter,
     ProviderRouterStatus,
+    ProviderNotAcceptingRequestsError,
+    ProviderShutdownError,
     ProviderSlot,
     ProviderTiming,
     ProviderUnavailableError,
@@ -267,6 +277,7 @@ __all__ = [
     "EmbeddingResult",
     "EmitSignalRequest",
     "HandlerRegistry",
+    "GracefulRestartCoordinator",
     "HistoryConfig",
     "InvalidTaskTransition",
     "InMemoryLogSink",
@@ -336,6 +347,8 @@ __all__ = [
     "ProviderMode",
     "ProviderRouter",
     "ProviderRouterStatus",
+    "ProviderNotAcceptingRequestsError",
+    "ProviderShutdownError",
     "ProviderRoutingConfig",
     "ProviderSlot",
     "ProviderStatusCommand",
@@ -343,7 +356,13 @@ __all__ = [
     "ProviderUnavailableError",
     "PreferenceMemory",
     "ResourceNotFoundError",
+    "RestartError",
+    "RestartResult",
+    "RestartStatus",
+    "RestartTarget",
+    "RestartTaskPolicy",
     "Runtime",
+    "RuntimeNotAcceptingWorkError",
     "RuntimeConfig",
     "RuntimeConfigurationManager",
     "RuntimeEventType",

@@ -2,7 +2,7 @@
 
 ## Current implementation
 
-Echo through Phase 7B plus the `0.4-tui_core` interface track consists of a
+Echo through Phase 7C plus the `0.4-tui_core` interface track consists of a
 minimal, standard-library Python kernel, an optional FastAPI HTTP and WebSocket
 adapter, and a separate SvelteKit development console shell. The documented,
 transport-agnostic runtime
@@ -32,6 +32,21 @@ unsupported, cyclic, non-finite, or corrupt values fail explicitly rather than
 falling back to executable serialization. Dedicated schema metadata records the
 schema and serializer versions and storage scope. The database contains no
 Signal, Task, Action, log, event, character-memory, or semantic-memory tables.
+
+Phase 7C adds the explicit `GracefulRestartCoordinator` development workflow.
+The old Runtime first enters a quiescing state that rejects new Signals. Its
+defined Task policy either waits for active handler Tasks for a bounded grace
+period and cancels any remainder, or cancels active Tasks immediately. The
+coordinator then saves each Entity's persistent category while clearing old
+session and ephemeral values, closes supplied providers, transports, and state
+stores through their supported async or synchronous lifecycle hooks, and stops
+the old Runtime. A factory must construct a different Runtime generation. The
+coordinator verifies every Entity's persistent snapshot was restored before it
+reports completion. The fresh Runtime has new queues, histories, Tasks, Signals,
+Actions, and other runtime-only state. Structured results, Runtime inspection,
+service status, and runtime lifecycle events report the restart reason, status,
+old Runtime ID, and new Runtime ID. No Python module hot replacement is
+attempted.
 
 Phase 6A adds the single typed `EchoConfig` application schema and a TOML
 loader based on Python's standard-library `tomllib`. Nested sections cover
@@ -622,10 +637,17 @@ execution remains deferred to Medulla.
   Entity isolation, durable deletion, and incompatible-schema rejection.
 - Phase 7B: Runtime stop/new Runtime acceptance coverage verifies persistent
   restoration while session and ephemeral state expire.
+- Phase 7C (`0.7.3`): explicit graceful restart coordinator with Runtime and
+  provider admission quiescing.
+- Phase 7C: bounded wait-then-cancel and immediate-cancel Task policies,
+  required Entity-state persistence, and capability-based provider/transport
+  cleanup.
+- Phase 7C: verified fresh Runtime construction, persistent-state restoration,
+  runtime-only-state expiry, and structured restart reason/status reporting.
 
 ## In progress
 
-Nothing. Phase 7B is complete. The Phase 1F
+Nothing. Phase 7C is complete. The Phase 1F
 TUI integration requirement remains active across all later phases.
 
 ## Known issues
@@ -655,7 +677,7 @@ TUI integration requirement remains active across all later phases.
 - Scheduler `periodic` is a priority class, not a recurring timer facility.
 - Signal payloads must already contain JSON-compatible values for `to_json`.
 
-These are roadmap deferrals, not missing Phase 7B acceptance criteria.
+These are roadmap deferrals, not missing Phase 7C acceptance criteria.
 
 ## Architecture decisions
 
@@ -760,12 +782,24 @@ These are roadmap deferrals, not missing Phase 7B acceptance criteria.
 - SQLite schema and serializer metadata are validated when the store opens.
   Per-key writes and deletes transact immediately; whole-Entity replacement is
   atomic and cannot affect another Entity's rows.
+- Graceful restart is explicit orchestration, not mutation of a live Runtime.
+  Quiescing permanently closes that generation's admission gate; the restart
+  factory must return a distinct Runtime with fresh runtime-only structures.
+- The `wait` Task policy uses a bounded grace period and cancels remaining work;
+  the `cancel` policy cancels active handler Tasks immediately. Persistence and
+  resource shutdown happen only after Task settlement.
+- Provider routing rejects new inference after quiescing and waits for an
+  in-flight inference before closing each provider. Concrete providers close
+  capable transports, and the offline provider unloads its backend.
+- Restart success requires restored persistent snapshots for every prior
+  Entity. Reason, status, and old/new Runtime IDs remain inspectable and are
+  published as Runtime lifecycle events.
 
 ## Next task
 
-Stop after Phase 7B. Do not begin configured host persistence, general event or
-history storage, semantic-memory persistence, context retrieval, Signal replay,
-or behavior policy without separate authorization.
+Stop after Phase 7C. Do not begin arbitrary Python hot replacement, general
+event or history storage, semantic-memory persistence, context retrieval,
+Signal replay, or behavior policy without separate authorization.
 
 ## Important files
 
@@ -788,6 +822,8 @@ or behavior policy without separate authorization.
   categories, in-memory implementation, and session compatibility view.
 - `src/echo/state/sqlite.py` — SQLite persistent-state implementation, schema
   metadata, transactions, and safe tagged-JSON serialization.
+- `src/echo/restart.py` — graceful restart phases, Task policy, persistence,
+  resource cleanup, restoration verification, and structured results.
 - `src/echo/core/handlers.py` — explicit handler registration.
 - `src/echo/core/task.py` — Task data and lifecycle transitions.
 - `src/echo/core/action.py` — structured Action intent.
@@ -820,6 +856,8 @@ or behavior policy without separate authorization.
   consolidation acceptance/rejection coverage.
 - `tests/test_phase7b_sqlite_state.py` — restart restoration, type preservation,
   Entity isolation, transaction safety, deletion, and schema-version coverage.
+- `tests/test_phase7c_graceful_restart.py` — admission quiescing, wait/cancel
+  policies, cleanup, state restoration, fresh runtime state, and reporting.
 - `src/echo/providers/openrouter.py` — OpenRouter configuration, HTTP transport,
   inference normalization, authenticated health, errors, and safe logging.
 - `src/echo/providers/lan.py` — explicit LAN/llama.cpp configuration, transport,

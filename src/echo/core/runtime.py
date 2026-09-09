@@ -40,6 +40,10 @@ from echo.runtime_events import (
 )
 
 
+class RuntimeNotAcceptingWorkError(RuntimeError):
+    """A Signal was submitted while the Runtime was quiescing or stopped."""
+
+
 class Runtime:
     """Route scheduled Signals to Entity handlers and record their work."""
 
@@ -63,6 +67,8 @@ class Runtime:
         self.task_history = TaskHistory(max_size=task_history_size)
         self.action_history = ActionHistory(max_size=action_history_size)
         self.running = False
+        self._accepting_work = False
+        self._restart_report: dict[str, Any] | None = None
         self._uptime_seconds = 0.0
         self._uptime_started: float | None = None
         self.entities: dict[str, Entity] = {}
@@ -98,19 +104,99 @@ class Runtime:
         if self.running:
             return
         self.running = True
+        self._accepting_work = True
         self._uptime_started = monotonic()
         self._log(RuntimeEventType.RUNTIME_STARTED, metadata={"runtime_id": self.id})
 
-    def stop(self) -> None:
+    def stop(
+        self,
+        *,
+        restart_reason: str | None = None,
+        restart_status: str | None = None,
+    ) -> None:
         """Mark the Runtime inactive and record the transition."""
 
+        self._accepting_work = False
         if not self.running:
             return
         if self._uptime_started is not None:
             self._uptime_seconds += monotonic() - self._uptime_started
             self._uptime_started = None
         self.running = False
-        self._log(RuntimeEventType.RUNTIME_STOPPED, metadata={"runtime_id": self.id})
+        metadata = {"runtime_id": self.id}
+        if restart_reason is not None:
+            metadata["restart_reason"] = restart_reason
+        if restart_status is not None:
+            metadata["restart_status"] = restart_status
+        self._log(RuntimeEventType.RUNTIME_STOPPED, metadata=metadata)
+
+    @property
+    def accepting_work(self) -> bool:
+        return self._accepting_work
+
+    @property
+    def active_task_ids(self) -> tuple[str, ...]:
+        return tuple(self._active_task_runs)
+
+    def quiesce(self, reason: str) -> None:
+        """Stop admitting new Signals while existing Tasks are settled."""
+
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError("restart reason must not be empty")
+        if not self._accepting_work:
+            return
+        self._accepting_work = False
+        self._log(
+            RuntimeEventType.RUNTIME_QUIESCING,
+            metadata={"runtime_id": self.id, "restart_reason": reason.strip()},
+        )
+
+    async def wait_for_active_tasks(self, timeout_seconds: float) -> bool:
+        """Wait for current handler Tasks, returning false on timeout."""
+
+        if (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, (int, float))
+            or timeout_seconds < 0
+        ):
+            raise ValueError("task wait timeout must be non-negative")
+        completions = tuple(
+            completed.wait() for _execution, completed in self._active_task_runs.values()
+        )
+        if not completions:
+            return True
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*completions), timeout=float(timeout_seconds)
+            )
+        except TimeoutError:
+            return False
+        return True
+
+    def report_restart(
+        self,
+        *,
+        reason: str,
+        previous_runtime_id: str,
+        status: str,
+    ) -> None:
+        """Attach and publish startup metadata for a completed restart."""
+
+        if not all(
+            isinstance(value, str) and value.strip()
+            for value in (reason, previous_runtime_id, status)
+        ):
+            raise ValueError("restart report values must not be empty")
+        self._restart_report = {
+            "reason": reason.strip(),
+            "status": status.strip(),
+            "previous_runtime_id": previous_runtime_id,
+            "runtime_id": self.id,
+        }
+        self._log(
+            RuntimeEventType.RUNTIME_RESTARTED,
+            metadata=deepcopy(self._restart_report),
+        )
 
     def resize_histories(
         self,
@@ -203,6 +289,8 @@ class Runtime:
             "runtime_id": self.id,
             "runtime_status": runtime_status,
             "uptime_seconds": self.uptime,
+            "accepting_work": self.accepting_work,
+            "restart": deepcopy(self._restart_report),
             "entity_ids": list(self.entities),
             "entity_state": {
                 entity.id: entity.state for entity in self.entities.values()
@@ -418,6 +506,8 @@ class Runtime:
     ) -> None:
         """Schedule a Signal and return after that Signal is dispatched."""
 
+        self._require_accepting_work()
+
         self._log(
             RuntimeEventType.SIGNAL_RECEIVED,
             entity_id=(
@@ -443,10 +533,17 @@ class Runtime:
         async with self._dispatch_lock:
             self._dispatch_owner = current
             try:
+                self._require_accepting_work()
                 await self.scheduler.schedule(signal, priority)
                 await self._process_through(signal)
             finally:
                 self._dispatch_owner = None
+
+    def _require_accepting_work(self) -> None:
+        if not self._accepting_work:
+            raise RuntimeNotAcceptingWorkError(
+                "runtime is not accepting new work"
+            )
 
     async def run_once(self) -> Signal:
         """Process the next Signal already present in the Scheduler."""

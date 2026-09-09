@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from inspect import isawaitable
 import json
 import logging
 import os
@@ -339,6 +340,22 @@ class OpenRouterProvider:
                 "status_code": response.status_code,
             },
         )
+
+    async def aclose(self) -> None:
+        """Close a custom transport when it exposes a close hook."""
+
+        method = next(
+            (
+                candidate
+                for name in ("aclose", "close")
+                if callable(candidate := getattr(self._transport, name, None))
+            ),
+            None,
+        )
+        if method is not None:
+            outcome = method()
+            if isawaitable(outcome):
+                await outcome
 
     def _require_api_key(self) -> str:
         if self._config.api_key is None:

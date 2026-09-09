@@ -294,7 +294,9 @@ def _event_category(event_type: RuntimeEventType) -> RuntimeEventCategory:
         return RuntimeEventCategory.STATE_CHANGED
     if event_type in {
         RuntimeEventType.RUNTIME_STARTED,
+        RuntimeEventType.RUNTIME_QUIESCING,
         RuntimeEventType.RUNTIME_STOPPED,
+        RuntimeEventType.RUNTIME_RESTARTED,
         RuntimeEventType.CONFIGURATION_RELOAD,
     }:
         return RuntimeEventCategory.RUNTIME_CHANGED
