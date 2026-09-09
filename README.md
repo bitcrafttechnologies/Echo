@@ -18,6 +18,10 @@ The web console and TUI are clients. Neither one starts Echo Core or its HTTP
 management API. Start the API in its own terminal first and leave that terminal
 running while using either interface.
 
+The root Core host registers a `UserMessage` handler for Console chat. Each
+message follows the normal Signal → Task → `EchoResponse` Action path and uses
+the active provider router; provider failures remain visible as failed Tasks.
+
 All commands in this section are run from the repository root. The complete
 non-interactive installation is:
 

@@ -11,6 +11,8 @@ from echo.config import ConfigurationError, DEFAULT_CONFIG_PATH, EchoConfig, loa
 from echo.config_reload import RuntimeConfigurationManager
 from echo.core.entity import Entity
 from echo.core.runtime import Runtime
+from echo.core.signal import Signal
+from echo.providers import InferenceRequest, ProviderRouter
 from echo.runtime_service import RuntimeService
 
 
@@ -22,6 +24,36 @@ def selected_config_path(path: str | Path | None = None) -> Path | None:
     if DEFAULT_CONFIG_PATH.is_file():
         return DEFAULT_CONFIG_PATH
     return None
+
+
+def register_user_message_handler(
+    entity: Entity,
+    provider_router: ProviderRouter,
+) -> None:
+    """Route Console chat Signals through inference and record the reply."""
+
+    @entity.on("UserMessage")
+    async def respond_to_user(signal: Signal):
+        text = signal.payload.get("text")
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError("UserMessage payload.text must be a non-empty string")
+        result = await provider_router.infer(
+            InferenceRequest(
+                prompt=text.strip(),
+                metadata={
+                    "entity_id": entity.id,
+                    "signal_id": signal.id,
+                    "source": signal.source,
+                },
+            )
+        )
+        return await entity.action(
+            "EchoResponse",
+            text=result.output,
+            request_id=result.request_id,
+            provider=result.provider.to_dict(),
+            timing=result.timing.to_dict(),
+        )
 
 
 def build_host(
@@ -36,8 +68,10 @@ def build_host(
     config.configure_logging()
     if not config.api.enabled:
         raise RuntimeError("Echo API is disabled by configuration")
-    runtime = config.create_runtime([Entity("bit")])
+    entity = Entity("bit")
     router = config.create_provider_router()
+    register_user_message_handler(entity, router)
+    runtime = config.create_runtime([entity])
     manager = RuntimeConfigurationManager(
         config,
         runtime,

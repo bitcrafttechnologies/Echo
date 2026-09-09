@@ -48,6 +48,12 @@ Console, or all three. Its explicit `--host` option can bind Core and the Web
 Console for LAN testing while the development proxy uses loopback. Process
 cleanup is bounded to the child processes started by the launcher.
 
+The root Core host registers one built-in `UserMessage` handler for Console
+chat. It invokes the active `ProviderRouter` and records the reply as an
+`EchoResponse` Action associated with the originating Signal and handler Task,
+so both Console implementations display responses without bypassing Runtime
+routing. This bridge does not add conversation persistence or context retrieval.
+
 `EchoConfig.create_runtime()` and `create_provider_router()` are the explicit
 construction boundary for validated settings. Disabled provider sections do
 not construct providers, so Core still runs without inference. Runtime history
