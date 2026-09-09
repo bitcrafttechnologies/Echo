@@ -25,8 +25,8 @@ class StateStore(Protocol):
     """Small persistence boundary for Entity state.
 
     Values are grouped by Entity and lifetime category. Read collections are
-    detached snapshots; individual ``get`` calls return the stored value so
-    callers retain the ordinary mutable-state behavior of ``Entity.state``.
+    detached snapshots. Callers use ``set`` after changing a value when the
+    selected persistence implementation does not retain live object references.
     """
 
     def get(

@@ -75,6 +75,13 @@ from echo.entity.relationships import RelationshipState, RelationshipStore
 from echo.entity.self_model import SelfModel
 from echo.entity.state import InternalState
 from echo.entity.state_store import InMemoryStateStore, StateCategory, StateStore
+from echo.state.sqlite import (
+    SQLiteStateStore,
+    StateSerializationError,
+    StateStoreClosedError,
+    StateStoreError,
+    StateStoreSchemaError,
+)
 from echo.entity.traits import TraitEvidence, TraitProfile
 from echo.developer_commands import (
     ActionListCommand,
@@ -356,6 +363,7 @@ __all__ = [
     "RuntimeSubscriptionEvent",
     "RuntimeSubscriptionRequest",
     "Scheduler",
+    "SQLiteStateStore",
     "Signal",
     "SignalHistory",
     "SignalHistoryEntry",
@@ -378,7 +386,11 @@ __all__ = [
     "StateResult",
     "StateGetCommand",
     "StateCategory",
+    "StateSerializationError",
     "StateStore",
+    "StateStoreClosedError",
+    "StateStoreError",
+    "StateStoreSchemaError",
     "StateSetCommand",
     "StateUpdateNotAllowedError",
     "SubscriptionClosedError",

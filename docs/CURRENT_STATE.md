@@ -2,7 +2,7 @@
 
 ## Current implementation
 
-Echo through Phase 7A plus the `0.4-tui_core` interface track consists of a
+Echo through Phase 7B plus the `0.4-tui_core` interface track consists of a
 minimal, standard-library Python kernel, an optional FastAPI HTTP and WebSocket
 adapter, and a separate SvelteKit development console shell. The documented,
 transport-agnostic runtime
@@ -21,6 +21,17 @@ injected store can back an Entity without changing handler code. The existing
 new category-aware Entity methods expose all three lifetimes. Handler mutations
 in every category retain causal `state.changed` logging. This phase does not add
 SQLite, restart persistence, or semantic-memory persistence.
+
+Phase 7B adds `SQLiteStateStore` for Entity-scoped persistent state. Persistent
+get/set/delete operations commit through SQLite, and whole-Entity saves replace
+only that Entity's persistent rows in one transaction. Session and ephemeral
+categories remain process-local and do not reappear when a new store and
+Runtime are constructed. Values use a versioned, tagged JSON codec that
+preserves supported primitive, bytes, list, tuple, and nested dictionary types;
+unsupported, cyclic, non-finite, or corrupt values fail explicitly rather than
+falling back to executable serialization. Dedicated schema metadata records the
+schema and serializer versions and storage scope. The database contains no
+Signal, Task, Action, log, event, character-memory, or semantic-memory tables.
 
 Phase 6A adds the single typed `EchoConfig` application schema and a TOML
 loader based on Python's standard-library `tomllib`. Nested sections cover
@@ -605,16 +616,22 @@ execution remains deferred to Medulla.
   ephemeral, session, and persistent categories.
 - Phase 7A: compatible `Entity.state` session mapping plus category-aware Entity
   access and causal state-change observability for all categories.
+- Phase 7B (`0.7.2`): SQLite-backed Entity persistent state with immediate,
+  transactional set/delete operations and atomic whole-Entity replacement.
+- Phase 7B: safe versioned tagged-JSON serialization, explicit schema metadata,
+  Entity isolation, durable deletion, and incompatible-schema rejection.
+- Phase 7B: Runtime stop/new Runtime acceptance coverage verifies persistent
+  restoration while session and ephemeral state expire.
 
 ## In progress
 
-Nothing. Phase 7A is complete. The Phase 1F
+Nothing. Phase 7B is complete. The Phase 1F
 TUI integration requirement remains active across all later phases.
 
 ## Known issues
 
-- The StateStore seam is implemented, but the available implementation is in
-  memory only; SQLite and restart persistence remain Phase 7B work.
+- SQLite persists ordinary Entity state explicitly categorized as persistent;
+  wiring a database path into the configured root host remains deferred.
 - Runtime histories and structured logs are in memory only.
 - Signal replay storage is not implemented.
 - Actions have no Medulla executor or transport.
@@ -638,7 +655,7 @@ TUI integration requirement remains active across all later phases.
 - Scheduler `periodic` is a priority class, not a recurring timer facility.
 - Signal payloads must already contain JSON-compatible values for `to_json`.
 
-These are roadmap deferrals, not missing Phase 7A acceptance criteria.
+These are roadmap deferrals, not missing Phase 7B acceptance criteria.
 
 ## Architecture decisions
 
@@ -734,12 +751,21 @@ These are roadmap deferrals, not missing Phase 7A acceptance criteria.
 - All three ordinary-state categories remain observable when changed during a
   handler. Session-state event metadata remains backward compatible; other
   categories add an explicit category field.
+- `SQLiteStateStore` stores only Entity-scoped persistent key/value state.
+  Session and ephemeral categories delegate to in-memory storage and expire
+  with that store instance.
+- Persistent values use a non-executable, versioned tagged-JSON codec rather
+  than pickle. Unsupported and cyclic values are rejected before a write
+  transaction begins.
+- SQLite schema and serializer metadata are validated when the store opens.
+  Per-key writes and deletes transact immediately; whole-Entity replacement is
+  atomic and cannot affect another Entity's rows.
 
 ## Next task
 
-Stop after Phase 7A. Do not begin SQLite persistence, restart restoration,
-semantic-memory persistence, context retrieval, Signal replay, or behavior
-policy without separate authorization.
+Stop after Phase 7B. Do not begin configured host persistence, general event or
+history storage, semantic-memory persistence, context retrieval, Signal replay,
+or behavior policy without separate authorization.
 
 ## Important files
 
@@ -760,6 +786,8 @@ policy without separate authorization.
 - `src/echo/core/entity.py` — Entity public abstraction.
 - `src/echo/entity/state_store.py` — StateStore protocol, state lifetime
   categories, in-memory implementation, and session compatibility view.
+- `src/echo/state/sqlite.py` — SQLite persistent-state implementation, schema
+  metadata, transactions, and safe tagged-JSON serialization.
 - `src/echo/core/handlers.py` — explicit handler registration.
 - `src/echo/core/task.py` — Task data and lifecycle transitions.
 - `src/echo/core/action.py` — structured Action intent.
@@ -790,6 +818,8 @@ policy without separate authorization.
   Phase 6C inspection/control coverage.
 - `tests/test_phase6_character.py` — selective memory retention and audited
   consolidation acceptance/rejection coverage.
+- `tests/test_phase7b_sqlite_state.py` — restart restoration, type preservation,
+  Entity isolation, transaction safety, deletion, and schema-version coverage.
 - `src/echo/providers/openrouter.py` — OpenRouter configuration, HTTP transport,
   inference normalization, authenticated health, errors, and safe logging.
 - `src/echo/providers/lan.py` — explicit LAN/llama.cpp configuration, transport,

@@ -143,7 +143,7 @@ def create_app(service: RuntimeServiceProtocol) -> FastAPI:
     if not isinstance(service, RuntimeServiceProtocol):
         raise TypeError("service must implement RuntimeServiceProtocol")
 
-    app = FastAPI(title="Echo Runtime API", version="0.7.1")
+    app = FastAPI(title="Echo Runtime API", version="0.7.2")
 
     @app.exception_handler(RuntimeServiceError)
     async def handle_runtime_service_error(
