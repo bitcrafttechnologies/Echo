@@ -15,6 +15,7 @@ from echo.core.runtime import Runtime
 from echo.core.signal import Signal
 from echo.entity.context import CharacterContextBuilder, CharacterContextRequest
 from echo.entity.config import EntitySeedError, load_entity_seed
+from echo.entity.memory import WorkingMemory
 from echo.providers import InferenceRequest, ProviderRouter
 from echo.restart import GracefulRestartCoordinator, RestartTarget
 from echo.runtime_service import RuntimeService
@@ -106,13 +107,31 @@ def register_user_message_handler(
                 },
             )
         )
-        return await entity.action(
+        action = await entity.action(
             "EchoResponse",
             text=result.output,
             request_id=result.request_id,
             provider=result.provider.to_dict(),
             timing=result.timing.to_dict(),
         )
+        memory_metadata: dict[str, Any] = {
+            "signal_id": signal.id,
+            "action_id": action.id,
+        }
+        if subject_id is not None:
+            memory_metadata["subject_id"] = subject_id
+        entity.remember(
+            WorkingMemory(
+                content={
+                    "event": "conversation_turn",
+                    "user_message": text.strip(),
+                    "bit_response": result.output,
+                },
+                source="echo.chat",
+                metadata=memory_metadata,
+            )
+        )
+        return action
 
 
 def _clone_entity_generation(entity: Entity) -> Entity:

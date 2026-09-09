@@ -12,7 +12,15 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from echo import Entity, MockProvider, ProviderRouter, Runtime, Signal, load_entity_seed
+from echo import (
+    Entity,
+    MemoryKind,
+    MockProvider,
+    ProviderRouter,
+    Runtime,
+    Signal,
+    load_entity_seed,
+)
 from echo.host import (
     build_host,
     register_user_message_handler,
@@ -81,7 +89,11 @@ class HostChatHandlerTests(unittest.TestCase):
                 "embodied_companion",
             )
             self.assertIn("speak in the first person as Bit", request.instructions)
-            self.assertIn("Never\nidentify Bit as the inference model", request.instructions)
+            self.assertIn(
+                "Never\nidentify Bit as the inference model",
+                request.instructions,
+            )
+            self.assertIn("private reasoning inputs", request.instructions)
 
         asyncio.run(exercise())
 
@@ -127,6 +139,57 @@ class HostChatHandlerTests(unittest.TestCase):
             )
             self.assertEqual(response.entity_id, "bit")
             self.assertIn(response.task_id, routed.routing_result.task_ids)
+            memories = entity.get_memories(MemoryKind.WORKING)
+            self.assertEqual(len(memories), 1)
+            self.assertEqual(
+                dict(memories[0].content),
+                {
+                    "event": "conversation_turn",
+                    "user_message": "Hello",
+                    "bit_response": "Hello from Echo.",
+                },
+            )
+            self.assertEqual(memories[0].source, "echo.chat")
+            self.assertEqual(memories[0].metadata["signal_id"], signal.id)
+            self.assertEqual(memories[0].metadata["action_id"], response.id)
+
+        asyncio.run(exercise())
+
+    def test_completed_chat_turn_is_available_to_followup_inference(self) -> None:
+        async def exercise() -> None:
+            provider = MockProvider(
+                responses=("The beach sounds peaceful.", "I remember.")
+            )
+            router = ProviderRouter(remote=provider)
+            entity = Entity("bit")
+            register_user_message_handler(entity, router)
+            runtime = Runtime([entity])
+
+            await runtime.emit(
+                Signal(
+                    type="UserMessage",
+                    payload={"text": "I used to sit by the water in Oceanside."},
+                )
+            )
+            await runtime.emit(
+                Signal(
+                    type="UserMessage",
+                    payload={"text": "What do you remember we discussed?"},
+                )
+            )
+
+            followup_context = provider.requests[1].context
+            self.assertEqual(len(followup_context["memories"]), 1)
+            remembered = followup_context["memories"][0]
+            self.assertEqual(remembered["kind"], "working")
+            self.assertEqual(
+                remembered["content"]["user_message"],
+                "I used to sit by the water in Oceanside.",
+            )
+            self.assertEqual(
+                remembered["content"]["bit_response"],
+                "The beach sounds peaceful.",
+            )
 
         asyncio.run(exercise())
 

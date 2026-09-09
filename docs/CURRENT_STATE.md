@@ -679,6 +679,9 @@ execution remains deferred to Medulla.
   model/vendor identity from replacing Bit's identity.
 - The project launcher supplies the canonical Entity seed root explicitly so a
   non-editable `.venv` installation resolves Bit's files from the checkout.
+- Successful chat exchanges enter bounded Entity-owned working memory and are
+  available to later cognition requests in the same runtime generation. The
+  character contract keeps raw configuration and context machinery private.
 
 ## In progress
 
