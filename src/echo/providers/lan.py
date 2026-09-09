@@ -212,10 +212,23 @@ class LanInferenceProvider:
             )
 
         body = dict(request.parameters)
+        messages: list[dict[str, str]] = []
+        if request.context:
+            messages.append(
+                {
+                    "role": "system",
+                    "content": json.dumps(
+                        {"echo_character_context": dict(request.context)},
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                }
+            )
+        messages.append({"role": "user", "content": request.prompt})
         body.update(
             {
                 "model": self._config.model,
-                "messages": [{"role": "user", "content": request.prompt}],
+                "messages": messages,
                 "stream": False,
             }
         )

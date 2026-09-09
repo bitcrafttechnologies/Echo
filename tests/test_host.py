@@ -39,6 +39,11 @@ class HostChatHandlerTests(unittest.TestCase):
             self.assertEqual(len(provider.requests), 1)
             self.assertEqual(provider.requests[0].prompt, "Hello")
             self.assertEqual(provider.requests[0].metadata["signal_id"], signal.id)
+            context = provider.requests[0].context
+            self.assertEqual(context["entity_id"], "bit")
+            self.assertEqual(context["situation"], "Hello")
+            self.assertIn("identity", context)
+            self.assertIn("memories", context)
 
             actions = runtime.filter_actions(signal_id=signal.id)
             self.assertEqual(len(actions), 1)

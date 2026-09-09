@@ -2,7 +2,7 @@
 
 ## Current implementation
 
-Echo through Phase 7C plus the `0.4-tui_core` interface track consists of a
+Echo through Phase 7D plus the `0.4-tui_core` interface track consists of a
 minimal, standard-library Python kernel, an optional FastAPI HTTP and WebSocket
 adapter, and a separate SvelteKit development console shell. The documented,
 transport-agnostic runtime
@@ -48,6 +48,27 @@ service status, and runtime lifecycle events report the restart reason, status,
 old Runtime ID, and new Runtime ID. No Python module hot replacement is
 attempted.
 
+Phase 7D exposes that workflow through the stable service and HTTP boundaries.
+A restart request requires a non-empty reason, the exact deliberate
+confirmation token `RESTART`, and an explicit state-preservation flag set to
+true. The returned operation makes preservation, Task policy, timestamps,
+current phase, failure, and old/new Runtime IDs inspectable. The long-lived API
+switches to the fresh Runtime and its reconstructed provider/configuration
+resources. Old event subscriptions close with WebSocket restart code `1012`;
+the Console polls operation progress and reconnects its HTTP status and event
+stream after completion. Its Overview control uses a prepare step plus typed
+confirmation, preventing a stray click from restarting Echo.
+
+The missing Phase 7 character slice is also complete. `CharacterContextBuilder`
+assembles bounded, detached, provider-neutral cognition context from identity,
+traits, all ordinary state lifetimes, internal state, drive baselines and
+activation, relevant attention, relationships and typed memories, active goal IDs,
+self-model, and supplied environment. Relevance selection is deterministic and
+hard-limited rather than dumping all Entity data. The host attaches this
+structured context to inference requests and reconstructs provider-independent
+character when it creates a fresh Runtime generation. This does not add Phase
+8 intentions, behavior arbitration, replay, or autonomous goals.
+
 Phase 6A adds the single typed `EchoConfig` application schema and a TOML
 loader based on Python's standard-library `tomllib`. Nested sections cover
 Runtime startup, Python logging, Signal/Task/Action/log/error history limits,
@@ -89,7 +110,8 @@ The root Core host registers one built-in `UserMessage` handler for Console
 chat. It invokes the active `ProviderRouter` and records the reply as an
 `EchoResponse` Action associated with the originating Signal and handler Task,
 so both Console implementations display responses without bypassing Runtime
-routing. This bridge does not add conversation persistence or context retrieval.
+routing. This bridge does not add conversation persistence. Phase 7D attaches
+bounded provider-neutral character context to each inference request.
 
 `EchoConfig.create_runtime()` and `create_provider_router()` are the explicit
 construction boundary for validated settings. Disabled provider sections do
@@ -178,8 +200,8 @@ evidence for selective retention and Echo-owned consolidation proposals.
 Repeated retained episodes can produce semantic, preference, or relationship
 memory only after evidence, confidence, subject scope, and contradiction
 checks. Both accepted and rejected retention/consolidation decisions are kept
-in bounded in-memory audit histories. Persistence and context retrieval remain
-assigned to Phase 7.
+in bounded in-memory audit histories. Phase 7D supplies relevant context
+retrieval; durable character-memory persistence remains deferred.
 
 The first-party terminal interface now mirrors every implemented web console
 surface through detached management snapshots: Overview, Chat, Signals,
@@ -644,10 +666,17 @@ execution remains deferred to Medulla.
   cleanup.
 - Phase 7C: verified fresh Runtime construction, persistent-state restoration,
   runtime-only-state expiry, and structured restart reason/status reporting.
+- Phase 7D (`0.7.4`): deliberate service and HTTP restart request plus tracked
+  progress operations that explicitly report state preservation.
+- Phase 7D: Console prepare/type-to-confirm control, live phase polling, old
+  event-socket closure, and automatic reconnection to the fresh Runtime.
+- Phase 7 character: bounded provider-neutral `CharacterContextBuilder`,
+  relevant state/relationship/memory retrieval, inference integration, and
+  character reconstruction across development restart.
 
 ## In progress
 
-Nothing. Phase 7C is complete. The Phase 1F
+Nothing. Phase 7D and the Phase 7 character slice are complete. The Phase 1F
 TUI integration requirement remains active across all later phases.
 
 ## Known issues
@@ -672,12 +701,12 @@ TUI integration requirement remains active across all later phases.
 - Handler enable/disable is not yet represented in the typed application
   schema, so Phase 6B does not attempt unsafe registry mutation.
 - Character memory retention and consolidation are in memory only. There is no
-  durable character persistence, context builder, behavior policy, or durable
-  character audit store.
+  durable character persistence, behavior policy, or durable character audit
+  store.
 - Scheduler `periodic` is a priority class, not a recurring timer facility.
 - Signal payloads must already contain JSON-compatible values for `to_json`.
 
-These are roadmap deferrals, not missing Phase 7C acceptance criteria.
+These are roadmap deferrals, not missing Phase 7D acceptance criteria.
 
 ## Architecture decisions
 
@@ -794,12 +823,22 @@ These are roadmap deferrals, not missing Phase 7C acceptance criteria.
 - Restart success requires restored persistent snapshots for every prior
   Entity. Reason, status, and old/new Runtime IDs remain inspectable and are
   published as Runtime lifecycle events.
+- Restart control remains behind `RuntimeServiceProtocol`. The API requires an
+  exact confirmation token and preservation enabled, returns `202`, and exposes
+  progress through an opaque operation ID.
+- The API process is not replaced. On success the service swaps its Runtime and
+  generation-scoped dependencies, closes old subscriptions with code `1012`,
+  and accepts new subscriptions against the fresh Runtime.
+- Character context is the structured `InferenceRequest.context` field,
+  assembled by deterministic bounded retrieval. OpenAI-compatible adapters
+  render the same canonical system message, while offline backends receive the
+  same request contract.
 
 ## Next task
 
-Stop after Phase 7C. Do not begin arbitrary Python hot replacement, general
-event or history storage, semantic-memory persistence, context retrieval,
-Signal replay, or behavior policy without separate authorization.
+Stop after Phase 7D. Do not begin Phase 8, arbitrary Python hot replacement,
+general event/history storage, semantic-memory persistence, Signal replay,
+intentions, or behavior policy without separate authorization.
 
 ## Important files
 
@@ -824,6 +863,8 @@ Signal replay, or behavior policy without separate authorization.
   metadata, transactions, and safe tagged-JSON serialization.
 - `src/echo/restart.py` — graceful restart phases, Task policy, persistence,
   resource cleanup, restoration verification, and structured results.
+- `src/echo/entity/context.py` — bounded provider-neutral Character context and
+  deterministic relevance selection.
 - `src/echo/core/handlers.py` — explicit handler registration.
 - `src/echo/core/task.py` — Task data and lifecycle transitions.
 - `src/echo/core/action.py` — structured Action intent.
@@ -858,6 +899,8 @@ Signal replay, or behavior policy without separate authorization.
   Entity isolation, transaction safety, deletion, and schema-version coverage.
 - `tests/test_phase7c_graceful_restart.py` — admission quiescing, wait/cancel
   policies, cleanup, state restoration, fresh runtime state, and reporting.
+- `tests/test_phase7d_restart_controls.py` — deliberate restart controls,
+  progress, preservation, event reconnection, and Character context retrieval.
 - `src/echo/providers/openrouter.py` — OpenRouter configuration, HTTP transport,
   inference normalization, authenticated health, errors, and safe logging.
 - `src/echo/providers/lan.py` — explicit LAN/llama.cpp configuration, transport,
@@ -894,6 +937,8 @@ Signal replay, or behavior policy without separate authorization.
   configuration reload/restart reporting.
 - `console/src/lib/ConfigurationInspector.svelte` — secret-safe effective
   configuration, live/restart labels, validated controls, and field errors.
+- `console/src/lib/RestartControl.svelte` — deliberate restart confirmation,
+  preservation status, progress polling, and reconnect trigger.
 - `console/src/lib/echo-client.ts` — HTTP clients, event reconciliation,
   filtering, and display helpers.
 - `console/vite.config.ts` — local HTTP and WebSocket development proxy.

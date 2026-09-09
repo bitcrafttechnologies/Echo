@@ -135,6 +135,7 @@ class InferenceRequest:
     """Provider-neutral text inference input assembled by Echo."""
 
     prompt: str
+    context: Mapping[str, Any] = field(default_factory=dict)
     parameters: Mapping[str, Any] = field(default_factory=dict)
     metadata: Mapping[str, Any] = field(default_factory=dict)
     request_id: str = field(default_factory=lambda: str(uuid4()))
@@ -144,6 +145,7 @@ class InferenceRequest:
         _require_text(self.prompt, "prompt")
         _require_text(self.request_id, "request_id")
         _require_aware(self.created_at, "created_at")
+        object.__setattr__(self, "context", _immutable_mapping(self.context))
         object.__setattr__(self, "parameters", _immutable_mapping(self.parameters))
         object.__setattr__(self, "metadata", _immutable_mapping(self.metadata))
 
@@ -151,6 +153,7 @@ class InferenceRequest:
         return {
             "request_id": self.request_id,
             "prompt": self.prompt,
+            "context": _mapping_to_dict(self.context),
             "parameters": _mapping_to_dict(self.parameters),
             "metadata": _mapping_to_dict(self.metadata),
             "created_at": self.created_at.isoformat(),

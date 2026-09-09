@@ -29,6 +29,8 @@ app = create_app(runtime_service)
 | --- | --- | --- |
 | `GET` | `/health` | `get_runtime_status()` readiness check |
 | `GET` | `/runtime/status` | `get_runtime_status()` |
+| `POST` | `/runtime/restart` | `request_restart()` |
+| `GET` | `/runtime/restart/{operation_id}` | `get_restart_operation()` |
 | `GET` | `/configuration` | `inspect_configuration()` |
 | `PATCH` | `/configuration` | `update_configuration()` |
 | `GET` | `/providers` | `inspect_providers()` |
@@ -68,7 +70,7 @@ allowlist.
 
 Provider mode writes accept `{"mode":"auto"}`, with `remote`, `lan`, and
 `offline` as the other allowed values. Inference accepts a required `prompt`
-plus optional `parameters`, `metadata`, and `request_id`. Provider inspection
+plus optional structured `context`, `parameters`, `metadata`, and `request_id`. Provider inspection
 returns configured provider metadata, health, active provider/model, latest
 latency, recent failures, and bounded per-request serving-provider history.
 
@@ -88,6 +90,16 @@ cross the service boundary. `PATCH /configuration` accepts
 classified live-editable are accepted, and the complete candidate is validated
 before application. Validation issues retain their dotted paths under
 `error.details.issues`.
+
+`POST /runtime/restart` is an explicit development control. Its body must
+contain a non-empty reason, `"confirmation":"RESTART"`, and
+`"preserve_state":true`; missing or different values are rejected. A `202`
+response returns an operation ID, Task settlement policy, preservation flag,
+old/new Runtime IDs, and the current phase. Clients poll
+`GET /runtime/restart/{operation_id}` through `quiescing`, `settling_tasks`,
+`persisting_state`, `closing_resources`, `starting`, and a terminal status.
+On success, existing event sockets close with WebSocket code `1012` so clients
+reconnect and subscribe to the fresh Runtime generation.
 
 ## WebSocket event stream
 

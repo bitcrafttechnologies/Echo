@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Mapping
 import os
 from pathlib import Path
 from typing import Any
@@ -12,7 +13,9 @@ from echo.config_reload import RuntimeConfigurationManager
 from echo.core.entity import Entity
 from echo.core.runtime import Runtime
 from echo.core.signal import Signal
+from echo.entity.context import CharacterContextBuilder, CharacterContextRequest
 from echo.providers import InferenceRequest, ProviderRouter
+from echo.restart import GracefulRestartCoordinator, RestartTarget
 from echo.runtime_service import RuntimeService
 
 
@@ -32,14 +35,31 @@ def register_user_message_handler(
 ) -> None:
     """Route Console chat Signals through inference and record the reply."""
 
+    context_builder = CharacterContextBuilder()
+
     @entity.on("UserMessage")
     async def respond_to_user(signal: Signal):
         text = signal.payload.get("text")
         if not isinstance(text, str) or not text.strip():
             raise ValueError("UserMessage payload.text must be a non-empty string")
+        subject_id = signal.metadata.get("subject_id")
+        if not isinstance(subject_id, str):
+            subject_id = None
+        environment = signal.metadata.get("environment", {})
+        if not isinstance(environment, Mapping):
+            environment = {}
+        character_context = context_builder.build(
+            entity,
+            CharacterContextRequest(
+                situation=text.strip(),
+                subject_id=subject_id,
+                environment=environment,
+            ),
+        )
         result = await provider_router.infer(
             InferenceRequest(
                 prompt=text.strip(),
+                context=character_context.to_dict(),
                 metadata={
                     "entity_id": entity.id,
                     "signal_id": signal.id,
@@ -54,6 +74,12 @@ def register_user_message_handler(
             provider=result.provider.to_dict(),
             timing=result.timing.to_dict(),
         )
+
+
+def _clone_entity_generation(entity: Entity) -> Entity:
+    """Reconstruct one Entity while retaining provider-independent character."""
+
+    return entity.copy_for_restart()
 
 
 def build_host(
@@ -78,10 +104,46 @@ def build_host(
         provider_router=router,
         config_path=config_path,
     )
+    coordinator: GracefulRestartCoordinator
+
+    def build_fresh_generation() -> RestartTarget:
+        current_entity = coordinator.runtime.get_entity("bit")
+        if current_entity is None:
+            raise RuntimeError("Bit is missing from the current Runtime")
+        current_manager = next(
+            (
+                resource
+                for resource in coordinator.resources
+                if isinstance(resource, RuntimeConfigurationManager)
+            ),
+            manager,
+        )
+        generation_config = current_manager.active_config
+        fresh_entity = _clone_entity_generation(current_entity)
+        fresh_router = generation_config.create_provider_router()
+        register_user_message_handler(fresh_entity, fresh_router)
+        fresh_runtime = generation_config.create_runtime([fresh_entity])
+        fresh_manager = RuntimeConfigurationManager(
+            generation_config,
+            fresh_runtime,
+            provider_router=fresh_router,
+            config_path=config_path,
+        )
+        return RestartTarget(
+            runtime=fresh_runtime,
+            resources=(fresh_router, fresh_manager),
+        )
+
+    coordinator = GracefulRestartCoordinator(
+        runtime,
+        build_fresh_generation,
+        resources=(router, manager),
+    )
     service = RuntimeService(
         runtime,
         provider_router=router,
         configuration_manager=manager,
+        restart_coordinator=coordinator,
     )
     return create_app(service), config, runtime, service
 
@@ -97,13 +159,15 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("uvicorn is required; run ./install.sh") from error
 
     try:
-        app, config, runtime, _service = build_host(arguments.config)
+        app, config, runtime, service = build_host(arguments.config)
     except (ConfigurationError, RuntimeError) as error:
         parser.exit(1, f"Echo could not start: {error}\n")
     try:
         uvicorn.run(app, host=config.api.host, port=config.api.port)
     finally:
         runtime.stop()
+        if service.runtime is not runtime:
+            service.runtime.stop()
     return 0
 
 

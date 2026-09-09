@@ -232,6 +232,24 @@ class Entity:
             self.id, self.snapshot_state() if state is None else state
         )
 
+    def copy_for_restart(self) -> Entity:
+        """Reconstruct this Entity while retaining its owned character."""
+
+        copied = Entity(
+            self.id,
+            identity=self.identity,
+            traits=self.traits,
+            self_model=SelfModel(**self.self_model.to_dict()),
+            internal_state=self.internal_state,
+            drives=self.drives,
+            drive_activations=self.drive_activations,
+            relationships=self._relationships,
+            memory=self._memory,
+            state_store=self.state_store,
+        )
+        copied._attention_candidates.extend(self._attention_candidates)
+        return copied
+
     def inspect_relationship(self, subject_id: str) -> RelationshipState | None:
         return self._relationships.get(subject_id)
 

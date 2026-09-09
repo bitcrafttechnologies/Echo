@@ -232,14 +232,21 @@ Phase 5 stops here.
 - Added a non-interactive root installer and a configuration-preserving root
   launcher for Core, Web Console, terminal Console, or both interfaces.
 
-Phase 6C stops here. Handler activation and signal/transport configuration
-require separate subphase authorization. Phase 7 persistence and context
-retrieval have not begun.
+## Phase 7 — state persistence and development restart
+
+- Phase 7A (`0.7.1`): StateStore abstraction — completed.
+- Phase 7B (`0.7.2`): SQLite Entity persistent state — completed.
+- Phase 7C (`0.7.3`): graceful restart workflow — completed.
+- Phase 7D (`0.7.4`): deliberate Console/API restart controls — completed.
+- Completed the Phase 7 character slice with bounded provider-neutral context
+  assembly and deterministic relevant retrieval across Entity character data.
+
+Phase 7D stops here. Phase 8 replay and behavior work has not begun.
 
 ## Deferred
 
 Remaining runtime APIs, Console, concrete model providers,
-persistence, replay, Medulla transports, edge ML, robotics, and
+character-memory persistence, replay, Medulla transports, edge ML, robotics, and
 advanced task behavior remain deferred to the phases defined in the plan.
 
 ## Persistent character vertical track
@@ -254,7 +261,8 @@ advanced task behavior remain deferred to the phases defined in the plan.
   memories — completed in memory; persistence remains deferred.
 - Phase 6: retention scoring, consolidation, and learned preferences —
   completed in memory; durable persistence remains deferred.
-- Phase 7: compact, provider-neutral Character Context Builder and retrieval.
+- Phase 7: compact, provider-neutral Character Context Builder and retrieval —
+  completed; durable character-memory persistence remains deferred.
 - Phase 8: proposed intentions, behavior arbitration, and autonomous curiosity.
 - Phase 9: evidence-based, bounded, auditable character evolution.
 - Phase 10 and later: embodiment signals constrain state, goals, and behavior.

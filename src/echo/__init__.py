@@ -55,6 +55,11 @@ from echo.entity.audit import (
 )
 from echo.entity.identity import EntityIdentity
 from echo.entity.attention import AttentionCandidate, AttentionProposal
+from echo.entity.context import (
+    CharacterContext,
+    CharacterContextBuilder,
+    CharacterContextRequest,
+)
 from echo.entity.drives import DriveProfile
 from echo.entity.influence import SignalInfluence
 from echo.entity.memory import (
@@ -126,6 +131,10 @@ from echo.runtime_service import (
     LogResult,
     ProviderInspectionResult,
     ResourceNotFoundError,
+    RestartConflictError,
+    RestartOperationResult,
+    RestartRequest,
+    RestartUnavailableError,
     RuntimeService,
     RuntimeServiceError,
     RuntimeServiceProtocol,
@@ -236,6 +245,9 @@ __all__ = [
     "CharacterMutationTarget",
     "CharacterMemory",
     "CharacterMemoryRecord",
+    "CharacterContext",
+    "CharacterContextBuilder",
+    "CharacterContextRequest",
     "CharacterStateResult",
     "ClassificationProvider",
     "ClassificationRequest",
@@ -356,11 +368,15 @@ __all__ = [
     "ProviderUnavailableError",
     "PreferenceMemory",
     "ResourceNotFoundError",
+    "RestartConflictError",
     "RestartError",
+    "RestartOperationResult",
+    "RestartRequest",
     "RestartResult",
     "RestartStatus",
     "RestartTarget",
     "RestartTaskPolicy",
+    "RestartUnavailableError",
     "Runtime",
     "RuntimeNotAcceptingWorkError",
     "RuntimeConfig",

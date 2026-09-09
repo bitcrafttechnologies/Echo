@@ -132,6 +132,16 @@ class GracefulRestartCoordinator:
     def last_result(self) -> RestartResult | None:
         return self._last_result
 
+    @property
+    def resources(self) -> tuple[object, ...]:
+        """Resources owned by the current Runtime generation."""
+
+        return self._target.resources
+
+    @property
+    def task_policy(self) -> RestartTaskPolicy:
+        return self._task_policy
+
     async def restart(self, reason: str) -> RestartResult:
         """Run one complete quiesce, persist, close, and fresh-start cycle."""
 

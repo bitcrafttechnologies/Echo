@@ -130,6 +130,7 @@ class OpenRouterProviderTests(unittest.IsolatedAsyncioTestCase):
         provider = OpenRouterProvider(_config(), transport=transport)
         request = InferenceRequest(
             prompt="Keep the laptop cool",
+            context={"entity_id": "bit", "state": {"fatigue": 0.2}},
             parameters={"temperature": 0.2, "max_tokens": 50},
         )
 
@@ -149,7 +150,13 @@ class OpenRouterProviderTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(call["json_body"]["model"], "openai/test-model")
         self.assertEqual(
             call["json_body"]["messages"],
-            [{"role": "user", "content": "Keep the laptop cool"}],
+            [
+                {
+                    "role": "system",
+                    "content": '{"echo_character_context":{"entity_id":"bit","state":{"fatigue":0.2}}}',
+                },
+                {"role": "user", "content": "Keep the laptop cool"},
+            ],
         )
         self.assertFalse(call["json_body"]["stream"])
         self.assertEqual(result.output, "normalized output")

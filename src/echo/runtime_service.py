@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterable, Mapping
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from datetime import datetime, timezone
 from typing import Any, Protocol, runtime_checkable
+from uuid import uuid4
 
 from echo.config import ConfigurationError
 from echo.config_reload import (
@@ -36,6 +39,12 @@ from echo.runtime_events import (
     InvalidSubscriptionError,
     RuntimeEventSubscription,
     RuntimeSubscriptionRequest,
+)
+from echo.restart import (
+    GracefulRestartCoordinator,
+    RestartError,
+    RestartStatus,
+    RestartTaskPolicy,
 )
 
 
@@ -98,6 +107,14 @@ class ConfigurationValidationServiceError(RuntimeServiceError):
     code = "invalid_configuration"
 
 
+class RestartUnavailableError(RuntimeServiceError):
+    code = "restart_unavailable"
+
+
+class RestartConflictError(RuntimeServiceError):
+    code = "restart_conflict"
+
+
 def _copy(value: Any) -> Any:
     if isinstance(value, Mapping):
         value = dict(value)
@@ -129,6 +146,47 @@ class RuntimeStatusResult:
             "uptime_seconds": self.uptime_seconds,
             "accepting_work": self.accepting_work,
             "restart": _copy(self.restart),
+        }
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
+class RestartRequest:
+    """Deliberate request to replace the current Runtime generation."""
+
+    reason: str
+    confirmation: str
+    preserve_state: bool
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
+class RestartOperationResult:
+    operation_id: str
+    reason: str
+    status: str
+    task_policy: RestartTaskPolicy
+    state_preservation_enabled: bool
+    previous_runtime_id: str
+    new_runtime_id: str | None
+    requested_at: datetime
+    completed_at: datetime | None = None
+    error: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "operation_id": self.operation_id,
+            "reason": self.reason,
+            "status": self.status,
+            "task_policy": self.task_policy.value,
+            "state_preservation_enabled": self.state_preservation_enabled,
+            "previous_runtime_id": self.previous_runtime_id,
+            "new_runtime_id": self.new_runtime_id,
+            "requested_at": self.requested_at.isoformat(),
+            "completed_at": (
+                self.completed_at.isoformat()
+                if self.completed_at is not None
+                else None
+            ),
+            "error": self.error,
         }
 
 
@@ -293,6 +351,14 @@ class RuntimeServiceProtocol(Protocol):
 
     def get_runtime_status(self) -> RuntimeStatusResult: ...
 
+    async def request_restart(
+        self, request: RestartRequest
+    ) -> RestartOperationResult: ...
+
+    def get_restart_operation(
+        self, operation_id: str
+    ) -> RestartOperationResult: ...
+
     def get_entities(self) -> tuple[EntityResult, ...]: ...
 
     def inspect_entity(self, entity_id: str) -> EntityResult: ...
@@ -387,6 +453,7 @@ class RuntimeService:
         allowed_state_keys: Mapping[str, Iterable[str]] | None = None,
         provider_router: ProviderRouter | None = None,
         configuration_manager: RuntimeConfigurationManager | None = None,
+        restart_coordinator: GracefulRestartCoordinator | None = None,
     ) -> None:
         if not isinstance(runtime, Runtime):
             raise InvalidRequestError("runtime must be a Runtime")
@@ -416,9 +483,26 @@ class RuntimeService:
             raise InvalidRequestError(
                 "configuration_manager must own this ProviderRouter"
             )
+        if restart_coordinator is not None and not isinstance(
+            restart_coordinator, GracefulRestartCoordinator
+        ):
+            raise InvalidRequestError(
+                "restart_coordinator must be a GracefulRestartCoordinator"
+            )
+        if (
+            restart_coordinator is not None
+            and restart_coordinator.runtime is not runtime
+        ):
+            raise InvalidRequestError(
+                "restart_coordinator must own this Runtime"
+            )
         self._runtime = runtime
         self._provider_router = provider_router
         self._configuration_manager = configuration_manager
+        self._restart_coordinator = restart_coordinator
+        self._restart_operation: RestartOperationResult | None = None
+        self._restart_task: asyncio.Task[None] | None = None
+        self._event_subscriptions: dict[str, RuntimeEventSubscription] = {}
         try:
             self._allowed_state_keys = {
                 entity_id: frozenset(keys)
@@ -428,6 +512,10 @@ class RuntimeService:
             raise InvalidRequestError(
                 "allowed state keys must be iterable collections"
             ) from error
+
+    @property
+    def runtime(self) -> Runtime:
+        return self._runtime
 
     async def infer(self, request: InferenceRequest) -> InferenceResult:
         if not isinstance(request, InferenceRequest):
@@ -571,6 +659,130 @@ class RuntimeService:
             accepting_work=snapshot["accepting_work"],
             restart=snapshot["restart"],
         )
+
+    async def request_restart(
+        self, request: RestartRequest
+    ) -> RestartOperationResult:
+        if not isinstance(request, RestartRequest):
+            raise InvalidRequestError("restart requires a RestartRequest")
+        if not isinstance(request.reason, str) or not request.reason.strip():
+            raise InvalidRequestError("restart reason must not be empty")
+        if request.confirmation != "RESTART":
+            raise InvalidRequestError(
+                "restart confirmation must exactly equal RESTART"
+            )
+        if request.preserve_state is not True:
+            raise InvalidRequestError(
+                "Phase 7D restart requires state preservation"
+            )
+        coordinator = self._restart_coordinator
+        if coordinator is None:
+            raise RestartUnavailableError(
+                "runtime restart is not configured for this host"
+            )
+        if self._restart_task is not None and not self._restart_task.done():
+            current = self._current_restart_operation()
+            raise RestartConflictError(
+                "a runtime restart is already in progress",
+                details={"operation": current.to_dict()},
+            )
+        operation = RestartOperationResult(
+            operation_id=str(uuid4()),
+            reason=request.reason.strip(),
+            status="requested",
+            task_policy=coordinator.task_policy,
+            state_preservation_enabled=True,
+            previous_runtime_id=self._runtime.id,
+            new_runtime_id=None,
+            requested_at=datetime.now(timezone.utc),
+        )
+        self._restart_operation = operation
+        self._restart_task = asyncio.create_task(
+            self._run_restart(operation),
+            name=f"echo-restart-{operation.operation_id}",
+        )
+        await asyncio.sleep(0)
+        return self._current_restart_operation()
+
+    def get_restart_operation(
+        self, operation_id: str
+    ) -> RestartOperationResult:
+        self._validate_identifier(operation_id, "operation_id")
+        operation = self._restart_operation
+        if operation is None or operation.operation_id != operation_id:
+            raise ResourceNotFoundError(
+                "restart operation not found",
+                details={"operation_id": operation_id},
+            )
+        return self._current_restart_operation()
+
+    async def _run_restart(self, operation: RestartOperationResult) -> None:
+        coordinator = self._restart_coordinator
+        assert coordinator is not None
+        try:
+            result = await coordinator.restart(operation.reason)
+        except RestartError as error:
+            self._restart_operation = replace(
+                operation,
+                status=RestartStatus.FAILED.value,
+                completed_at=datetime.now(timezone.utc),
+                error=str(error),
+            )
+            return
+
+        for subscription in tuple(self._event_subscriptions.values()):
+            subscription.close()
+        self._event_subscriptions.clear()
+        self._runtime = coordinator.runtime
+        self._provider_router = next(
+            (
+                resource
+                for resource in coordinator.resources
+                if isinstance(resource, ProviderRouter)
+            ),
+            None,
+        )
+        self._configuration_manager = next(
+            (
+                resource
+                for resource in coordinator.resources
+                if isinstance(resource, RuntimeConfigurationManager)
+            ),
+            None,
+        )
+        self._restart_operation = RestartOperationResult(
+            operation_id=operation.operation_id,
+            reason=operation.reason,
+            status=result.status.value,
+            task_policy=result.task_policy,
+            state_preservation_enabled=True,
+            previous_runtime_id=result.previous_runtime_id,
+            new_runtime_id=result.new_runtime_id,
+            requested_at=operation.requested_at,
+            completed_at=datetime.now(timezone.utc),
+        )
+
+    def _current_restart_operation(self) -> RestartOperationResult:
+        operation = self._restart_operation
+        if operation is None:
+            raise ResourceNotFoundError("restart operation not found")
+        coordinator = self._restart_coordinator
+        if (
+            coordinator is not None
+            and self._restart_task is not None
+            and not self._restart_task.done()
+        ):
+            return RestartOperationResult(
+                operation_id=operation.operation_id,
+                reason=operation.reason,
+                status=coordinator.status.value,
+                task_policy=operation.task_policy,
+                state_preservation_enabled=True,
+                previous_runtime_id=operation.previous_runtime_id,
+                new_runtime_id=None,
+                requested_at=operation.requested_at,
+            )
+        return operation
 
     def get_entities(self) -> tuple[EntityResult, ...]:
         return tuple(
@@ -828,12 +1040,19 @@ class RuntimeService:
         """Subscribe to future live activity without exposing Runtime internals."""
 
         try:
-            return self._runtime.subscribe_events(request)
+            subscription = self._runtime.subscribe_events(request)
         except InvalidSubscriptionError as error:
             raise InvalidRequestError(
                 error.message,
                 details=error.details,
             ) from error
+        self._event_subscriptions = {
+            identifier: value
+            for identifier, value in self._event_subscriptions.items()
+            if not value.closed
+        }
+        self._event_subscriptions[subscription.id] = subscription
+        return subscription
 
     def _require_entity(self, entity_id: str) -> Any:
         self._validate_identifier(entity_id, "entity_id")

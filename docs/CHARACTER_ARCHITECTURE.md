@@ -245,6 +245,13 @@ Phase 6 adds normalized selective-retention evidence and Echo-owned
 consolidation proposals. Repeated retained episodes may form semantic,
 preference, or relationship memory only after confidence, scope, evidence, and
 contradiction checks; accepted and rejected decisions remain auditable.
+Phase 7 adds `CharacterContextBuilder`, which deterministically selects a hard-
+bounded provider-neutral snapshot of identity, traits, categorized state,
+internal state, drives, attention, relationships, memories, active goal IDs, self-model,
+and environment for each cognition request. The configured host reconstructs
+this provider-independent character across a graceful development restart.
+Durable character-memory storage remains separate from ordinary StateStore
+persistence.
 
 ## Required tests
 

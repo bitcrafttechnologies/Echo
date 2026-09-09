@@ -2,6 +2,26 @@ export type RuntimeStatus = {
   runtime_id: string;
   status: 'idle' | 'active' | 'stopped' | string;
   uptime_seconds: number;
+  accepting_work: boolean;
+  restart: {
+    reason: string;
+    status: string;
+    previous_runtime_id: string;
+    runtime_id: string;
+  } | null;
+};
+
+export type RestartOperation = {
+  operation_id: string;
+  reason: string;
+  status: string;
+  task_policy: 'wait' | 'cancel';
+  state_preservation_enabled: boolean;
+  previous_runtime_id: string;
+  new_runtime_id: string | null;
+  requested_at: string;
+  completed_at: string | null;
+  error: string | null;
 };
 
 export type ProviderMetadata = {
@@ -190,6 +210,37 @@ export async function fetchRuntimeStatus(
     throw new Error(`Runtime status request failed (${response.status})`);
   }
   return (await response.json()) as RuntimeStatus;
+}
+
+export async function requestRuntimeRestart(
+  fetcher: typeof fetch,
+  reason: string,
+  apiBase = '/api'
+): Promise<RestartOperation> {
+  const response = await fetcher(`${apiBase.replace(/\/$/, '')}/runtime/restart`, {
+    method: 'POST',
+    headers: { accept: 'application/json', 'content-type': 'application/json' },
+    body: JSON.stringify({
+      reason,
+      confirmation: 'RESTART',
+      preserve_state: true
+    })
+  });
+  if (!response.ok) throw await responseError(response, 'Runtime restart request failed');
+  return (await response.json()) as RestartOperation;
+}
+
+export async function fetchRestartOperation(
+  fetcher: typeof fetch,
+  operationId: string,
+  apiBase = '/api'
+): Promise<RestartOperation> {
+  const response = await fetcher(
+    `${apiBase.replace(/\/$/, '')}/runtime/restart/${encodeURIComponent(operationId)}`,
+    { headers: { accept: 'application/json' } }
+  );
+  if (!response.ok) throw await responseError(response, 'Restart progress request failed');
+  return (await response.json()) as RestartOperation;
 }
 
 export async function fetchProviders(

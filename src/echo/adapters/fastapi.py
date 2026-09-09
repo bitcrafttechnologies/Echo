@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import FastAPI, Query, Request, WebSocket, WebSocketDisconnect, status
 from fastapi.responses import JSONResponse
@@ -15,6 +16,7 @@ from echo import (
     EmitSignalRequest,
     InferenceRequest,
     LogQuery,
+    RestartRequest,
     RuntimeServiceError,
     RuntimeServiceProtocol,
     RuntimeEventSubscription,
@@ -64,6 +66,7 @@ class InferenceBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     prompt: str = Field(min_length=1)
+    context: dict[str, Any] = Field(default_factory=dict)
     parameters: dict[str, Any] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
     request_id: str | None = Field(default=None, min_length=1)
@@ -85,6 +88,23 @@ class ConfigurationUpdateBody(BaseModel):
     values: dict[str, Any]
 
 
+class RestartBody(BaseModel):
+    """A deliberately confirmed, state-preserving development restart."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1)
+    confirmation: Literal["RESTART"]
+    preserve_state: Literal[True]
+
+    def to_request(self) -> RestartRequest:
+        return RestartRequest(
+            reason=self.reason,
+            confirmation=self.confirmation,
+            preserve_state=self.preserve_state,
+        )
+
+
 _ERROR_STATUS = {
     "invalid_request": status.HTTP_400_BAD_REQUEST,
     "not_found": status.HTTP_404_NOT_FOUND,
@@ -95,6 +115,8 @@ _ERROR_STATUS = {
     "inference_unavailable": status.HTTP_503_SERVICE_UNAVAILABLE,
     "configuration_reload_unavailable": status.HTTP_503_SERVICE_UNAVAILABLE,
     "invalid_configuration": 422,
+    "restart_unavailable": status.HTTP_503_SERVICE_UNAVAILABLE,
+    "restart_conflict": status.HTTP_409_CONFLICT,
     "runtime_service_error": status.HTTP_500_INTERNAL_SERVER_ERROR,
 }
 
@@ -119,6 +141,14 @@ async def _stream_events(
                 await websocket.send_json(event.to_dict())
         except WebSocketDisconnect:
             subscription.close()
+        finally:
+            close = getattr(websocket, "close", None)
+            if subscription.closed and callable(close):
+                with suppress(RuntimeError, WebSocketDisconnect):
+                    await close(
+                        code=1012,
+                        reason="Runtime generation restarted",
+                    )
 
     async def watch_client() -> None:
         try:
@@ -143,7 +173,7 @@ def create_app(service: RuntimeServiceProtocol) -> FastAPI:
     if not isinstance(service, RuntimeServiceProtocol):
         raise TypeError("service must implement RuntimeServiceProtocol")
 
-    app = FastAPI(title="Echo Runtime API", version="0.7.3")
+    app = FastAPI(title="Echo Runtime API", version="0.7.4")
 
     @app.exception_handler(RuntimeServiceError)
     async def handle_runtime_service_error(
@@ -167,6 +197,18 @@ def create_app(service: RuntimeServiceProtocol) -> FastAPI:
     @app.get("/runtime/status", tags=["runtime"])
     async def runtime_status() -> dict[str, Any]:
         return _as_dict(service.get_runtime_status())
+
+    @app.post(
+        "/runtime/restart",
+        tags=["runtime"],
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    async def request_runtime_restart(body: RestartBody) -> dict[str, Any]:
+        return _as_dict(await service.request_restart(body.to_request()))
+
+    @app.get("/runtime/restart/{operation_id}", tags=["runtime"])
+    async def inspect_runtime_restart(operation_id: str) -> dict[str, Any]:
+        return _as_dict(service.get_restart_operation(operation_id))
 
     @app.post("/configuration/reload", tags=["configuration"])
     async def reload_configuration() -> dict[str, Any]:

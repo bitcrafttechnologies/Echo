@@ -9,6 +9,7 @@
   import ChatView from '$lib/ChatView.svelte';
   import ProviderInspector from '$lib/ProviderInspector.svelte';
   import ConfigurationInspector from '$lib/ConfigurationInspector.svelte';
+  import RestartControl from '$lib/RestartControl.svelte';
 
   import {
     eventStreamUrl,
@@ -270,6 +271,8 @@
             <strong>{socketState === 'connected' ? 'Receiving' : 'Waiting'}</strong>
           </article>
         </div>
+
+        <RestartControl {apiBase} onReconnect={reconnect} />
 
         <section class="event-panel" aria-labelledby="events-heading">
           <div class="panel-heading">

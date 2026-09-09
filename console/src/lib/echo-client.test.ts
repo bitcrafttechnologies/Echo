@@ -6,12 +6,14 @@ import {
   fetchConfiguration,
   fetchLogs,
   fetchProviders,
+  fetchRestartOperation,
   fetchRuntimeStatus,
   fetchSignals,
   filterSignals,
   formatUptime,
   mergeSignals,
   reloadConfiguration,
+  requestRuntimeRestart,
   setProviderMode,
   sendUserMessage,
   signalFromEvent,
@@ -67,6 +69,31 @@ describe('Echo API client', () => {
     await expect(fetchRuntimeStatus(fetcher)).rejects.toThrow(
       'Runtime status request failed (503)'
     );
+  });
+
+  it('uses an explicitly confirmed state-preserving restart operation', async () => {
+    const operation = {
+      operation_id: 'restart-1', reason: 'code changed', status: 'quiescing',
+      task_policy: 'wait', state_preservation_enabled: true,
+      previous_runtime_id: 'runtime-1', new_runtime_id: null,
+      requested_at: '2026-09-09T12:00:00Z', completed_at: null, error: null
+    } as const;
+    const fetcher = vi.fn(async () => new Response(JSON.stringify(operation), {
+      status: 200, headers: { 'content-type': 'application/json' }
+    }));
+
+    await expect(requestRuntimeRestart(fetcher, 'code changed', '/api/')).resolves.toEqual(operation);
+    await expect(fetchRestartOperation(fetcher, 'restart-1', '/api/')).resolves.toEqual(operation);
+    expect(fetcher).toHaveBeenNthCalledWith(1, '/api/runtime/restart', {
+      method: 'POST',
+      headers: { accept: 'application/json', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        reason: 'code changed', confirmation: 'RESTART', preserve_state: true
+      })
+    });
+    expect(fetcher).toHaveBeenNthCalledWith(2, '/api/runtime/restart/restart-1', {
+      headers: { accept: 'application/json' }
+    });
   });
 
   it('inspects providers and switches only through the management API', async () => {

@@ -10,6 +10,11 @@ from echo.entity.audit import (
     CharacterMutationTarget,
 )
 from echo.entity.attention import AttentionCandidate, AttentionProposal
+from echo.entity.context import (
+    CharacterContext,
+    CharacterContextBuilder,
+    CharacterContextRequest,
+)
 from echo.entity.drives import DriveProfile
 from echo.entity.influence import SignalInfluence
 from echo.entity.identity import EntityIdentity
@@ -37,6 +42,9 @@ __all__ = [
     "CharacterMutationAuditRecord",
     "CharacterMutationDecision",
     "CharacterMutationTarget",
+    "CharacterContext",
+    "CharacterContextBuilder",
+    "CharacterContextRequest",
     "AttentionCandidate",
     "AttentionProposal",
     "DriveProfile",

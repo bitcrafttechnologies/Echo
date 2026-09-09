@@ -54,6 +54,8 @@ Stable service error codes are:
 | `invalid_character_influence` | State/drive dimensions are not configured. |
 | `inference_unavailable` | No configured provider allowed by the mode could serve inference. |
 | `runtime_service_error` | An otherwise unclassified service failure. |
+| `restart_unavailable` | This host has no restart coordinator. |
+| `restart_conflict` | Another restart operation is already active. |
 
 Transport adapters may map these errors to their own response mechanisms, but
 the mapping is outside this contract and must not leak back into Echo Core.
@@ -63,6 +65,8 @@ the mapping is outside this contract and must not leak back into Echo Core.
 | Operation | Input | Result | Notes |
 | --- | --- | --- | --- |
 | `get_runtime_status()` | none | `RuntimeStatusResult` | Runtime ID, idle/active/stopped status, uptime. |
+| `request_restart(request)` | `RestartRequest` | `RestartOperationResult` | Requires exact confirmation and state preservation; starts tracked work. |
+| `get_restart_operation(operation_id)` | ID | `RestartOperationResult` | Current restart phase and old/new Runtime IDs. |
 | `get_entities()` | none | `tuple[EntityResult, ...]` | Detached Entity views. |
 | `inspect_entity(entity_id)` | ID | `EntityResult` | State, character, active Task IDs, handlers. |
 | `get_relationships(entity_id)` | ID | Relationship snapshots | Detached per-person social state. |
@@ -95,6 +99,12 @@ the service is constructed. Results classify each changed dotted path as
 whole candidate, and validation failures leave the active typed configuration
 unchanged. Each outcome is also published as a structured
 `configuration.reload` Runtime event.
+
+Restart is an asynchronous development operation backed by
+`GracefulRestartCoordinator`. `RestartRequest` requires the exact confirmation
+token `RESTART` and `preserve_state=True`. `RestartOperationResult` always
+states whether preservation is enabled and exposes progress without granting
+adapters direct access to Runtime lifecycle methods.
 
 ### Character control boundary
 
