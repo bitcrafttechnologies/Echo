@@ -138,6 +138,10 @@ class CharacterContextBuilder:
             request.subject_id,
             request.max_memories,
         )
+        durable_memories = entity.query_durable_memories(
+            request.situation,
+            limit=request.max_memories,
+        )
         attention = sorted(
             entity.attention_candidates,
             key=lambda value: (
@@ -171,7 +175,10 @@ class CharacterContextBuilder:
             ),
             attention=tuple(_frozen(value.to_dict()) for value in attention),
             relationships=tuple(_frozen(value) for value in relationships),
-            memories=tuple(_frozen(record.to_dict()) for record in memories),
+            memories=tuple(
+                _frozen(record.to_dict())
+                for record in (*durable_memories, *memories)
+            )[: request.max_memories],
             goals=tuple(self_model["active_goal_ids"]),
             self_model=_frozen(self_model),
             environment=_frozen(environment),

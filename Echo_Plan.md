@@ -1657,6 +1657,22 @@ state, drives, relationships, memories, goals, self-model, and environment.
 The assembled cognition context and response proposal schema must be portable
 across remote, LAN, and offline providers.
 
+Phase 7E — Durable Semantic and Character Memory
+
+Before Phase 8, extend the existing Phase 6 consolidation and Phase 7 SQLite
+and retrieval paths with an Entity-scoped durable-memory boundary. Echo owns
+candidate validation, commit, deduplication, supersession, provenance, and
+bounded retrieval; providers may only propose changes. Persist concise
+semantic knowledge, conservative character-development memory, and the
+evidence needed for cross-session consolidation without creating a transcript
+archive. Production startup must use the configured local store, and restart
+tests must construct a fresh Runtime and store without replaying conversation.
+
+Use separate memory tables and APIs in the existing SQLite database. Preserve
+authored Entity files as immutable baselines. Direct-experience provenance is a
+trusted Core assertion and cannot be supplied by model prose. Do not add Phase
+8 intentions or Phase 9 reflection/trait mutation here.
+
 ⸻
 
 Phase 8 — Signal Replay

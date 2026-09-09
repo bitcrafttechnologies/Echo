@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import deque
 from collections.abc import Callable, Mapping, MutableMapping
 from types import MappingProxyType
+import json
 from typing import TYPE_CHECKING, Any
 
 from echo.core.action import Action
@@ -24,6 +25,15 @@ from echo.entity.memory import (
     MemoryKind,
     MemoryRecord,
     MemoryRetentionDecision,
+)
+from echo.entity.memory_store import (
+    DurableMemoryRecord,
+    DurableMemoryStatus,
+    DurableMemoryType,
+    MemoryCandidate,
+    MemoryCommitDecision,
+    MemoryService,
+    MemorySourceType,
 )
 from echo.entity.relationships import RelationshipState, RelationshipStore
 from echo.entity.self_model import SelfModel
@@ -57,6 +67,7 @@ class Entity:
         drive_activations: Mapping[str, float] | None = None,
         relationships: RelationshipStore | None = None,
         memory: CharacterMemory | None = None,
+        memory_service: MemoryService | None = None,
         state_store: StateStore | None = None,
     ) -> None:
         if not entity_id:
@@ -90,6 +101,10 @@ class Entity:
             raise ValueError("relationships must be a RelationshipStore")
         if memory is not None and not isinstance(memory, CharacterMemory):
             raise ValueError("memory must be a CharacterMemory")
+        if memory_service is not None and not isinstance(memory_service, MemoryService):
+            raise ValueError("memory_service must be a MemoryService")
+        if memory_service is not None and memory_service.entity_id != entity_id:
+            raise ValueError("memory_service entity_id must match Entity id")
         self._id = entity_id
         self._identity = identity
         self._traits = traits or TraitProfile()
@@ -114,6 +129,7 @@ class Entity:
             dict((relationships or RelationshipStore()).relationships)
         )
         self._memory = (memory or CharacterMemory()).copy()
+        self._memory_service = memory_service or MemoryService(entity_id)
         self._state_store = state_store or InMemoryStateStore()
         if not isinstance(self._state_store, StateStore):
             raise TypeError("state_store must implement StateStore")
@@ -182,6 +198,14 @@ class Entity:
 
         return self._state_store
 
+    @property
+    def runtime(self) -> Runtime | None:
+        return self._runtime
+
+    @property
+    def memory_service(self) -> MemoryService:
+        return self._memory_service
+
     def get_state(
         self,
         key: str,
@@ -245,6 +269,7 @@ class Entity:
             drive_activations=self.drive_activations,
             relationships=self._relationships,
             memory=self._memory,
+            memory_service=self._memory_service,
             state_store=self.state_store,
         )
         copied._attention_candidates.extend(self._attention_candidates)
@@ -269,6 +294,31 @@ class Entity:
 
         self._memory.add(record)
 
+    @property
+    def durable_memories(self) -> tuple[DurableMemoryRecord, ...]:
+        return self._memory_service.list(status=DurableMemoryStatus.ACTIVE)
+
+    def commit_memory_candidate(
+        self,
+        candidate: MemoryCandidate,
+        *,
+        trusted_provenance: bool = False,
+    ) -> MemoryCommitDecision:
+        return self._memory_service.commit(
+            candidate, trusted_provenance=trusted_provenance
+        )
+
+    def query_durable_memories(
+        self,
+        situation: str,
+        *,
+        limit: int | None = None,
+        memory_type: DurableMemoryType | str | None = None,
+    ) -> tuple[DurableMemoryRecord, ...]:
+        return self._memory_service.query(
+            situation, limit=limit, memory_type=memory_type
+        )
+
     def consider_memory(
         self,
         record: MemoryRecord,
@@ -284,9 +334,29 @@ class Entity:
         *,
         minimum_confidence: float = 0.65,
     ) -> MemoryConsolidationDecision:
-        return self._memory.consolidate(
+        decision = self._memory.consolidate(
             proposal, minimum_confidence=minimum_confidence
         )
+        if decision.accepted and decision.record_id is not None:
+            record = next(
+                item for item in self._memory.list(proposal.target_kind)
+                if item.id == decision.record_id
+            )
+            self._memory_service.commit(
+                MemoryCandidate(
+                    content=json.dumps(dict(record.content), sort_keys=True),
+                    memory_type=DurableMemoryType.SEMANTIC,
+                    source_type=MemorySourceType.REFLECTION,
+                    source_refs=tuple(
+                        f"memory:{item}" for item in decision.evidence_ids
+                    ),
+                    confidence=proposal.confidence,
+                    importance=0.7,
+                    canonical_key=f"{proposal.target_kind.value}:{proposal.key}",
+                    subject_id=proposal.subject_id,
+                )
+            )
+        return decision
 
     def inspect_character(self) -> dict[str, Any]:
         """Return detached Entity-owned character state as structured data."""
@@ -305,6 +375,9 @@ class Entity:
             ],
             "relationships": self._relationships.to_dict(),
             "memory": self._memory.to_dict(),
+            "durable_memory": [
+                record.to_dict() for record in self._memory_service.list()
+            ],
             "memory_audit": self._memory.audit_to_dict(),
         }
 

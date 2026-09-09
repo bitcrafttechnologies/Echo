@@ -15,6 +15,10 @@ actions = 1000
 logs = 1000
 errors = 1000
 
+[persistence]
+enabled = true
+database_path = ".echo/echo.sqlite3"
+
 [providers]
 mode = "auto"
 preference = ["remote", "lan", "offline"]

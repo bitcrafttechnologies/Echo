@@ -27,6 +27,11 @@ from echo.core.task import TaskStatus
 from echo.core.task_history import TaskHistoryEntry
 from echo.entity.attention import AttentionCandidate
 from echo.entity.influence import SignalInfluence
+from echo.entity.memory_store import (
+    DurableMemoryRecord,
+    DurableMemoryStatus,
+    DurableMemoryType,
+)
 from echo.entity.relationships import RelationshipState
 from echo.providers import (
     InferenceRequest,
@@ -291,6 +296,18 @@ class CharacterStateResult:
 
 
 @dataclass(slots=True, kw_only=True, frozen=True)
+class DurableMemoryResult:
+    entity_id: str
+    records: tuple[DurableMemoryRecord, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "entity_id": self.entity_id,
+            "records": [record.to_dict() for record in self.records],
+        }
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
 class ProviderInspectionResult:
     mode: ProviderMode
     preference: tuple[str, ...]
@@ -370,6 +387,24 @@ class RuntimeServiceProtocol(Protocol):
     def inspect_relationship(
         self, entity_id: str, subject_id: str
     ) -> RelationshipState: ...
+
+    def get_durable_memories(
+        self,
+        entity_id: str,
+        *,
+        status: DurableMemoryStatus | str | None = None,
+        memory_type: DurableMemoryType | str | None = None,
+    ) -> DurableMemoryResult: ...
+
+    def inspect_durable_memory(
+        self, entity_id: str, memory_id: str
+    ) -> DurableMemoryRecord: ...
+
+    def archive_durable_memory(
+        self, entity_id: str, memory_id: str
+    ) -> DurableMemoryRecord: ...
+
+    def delete_durable_memory(self, entity_id: str, memory_id: str) -> None: ...
 
     async def emit_signal(
         self,
@@ -809,6 +844,49 @@ class RuntimeService:
                 details={"entity_id": entity_id, "subject_id": subject_id},
             )
         return relationship
+
+    def get_durable_memories(
+        self,
+        entity_id: str,
+        *,
+        status: DurableMemoryStatus | str | None = None,
+        memory_type: DurableMemoryType | str | None = None,
+    ) -> DurableMemoryResult:
+        entity = self._require_entity(entity_id)
+        try:
+            records = entity.memory_service.list(
+                status=status, memory_type=memory_type
+            )
+        except ValueError as error:
+            raise InvalidRequestError(str(error)) from error
+        return DurableMemoryResult(entity_id=entity_id, records=records)
+
+    def inspect_durable_memory(
+        self, entity_id: str, memory_id: str
+    ) -> DurableMemoryRecord:
+        self._validate_identifier(memory_id, "memory_id")
+        record = self._require_entity(entity_id).memory_service.get(memory_id)
+        if record is None:
+            raise ResourceNotFoundError(
+                "memory not found",
+                details={"entity_id": entity_id, "memory_id": memory_id},
+            )
+        return record
+
+    def archive_durable_memory(
+        self, entity_id: str, memory_id: str
+    ) -> DurableMemoryRecord:
+        entity = self._require_entity(entity_id)
+        record = self.inspect_durable_memory(entity_id, memory_id)
+        entity.memory_service.archive(record.id)
+        archived = entity.memory_service.get(record.id)
+        assert archived is not None
+        return archived
+
+    def delete_durable_memory(self, entity_id: str, memory_id: str) -> None:
+        entity = self._require_entity(entity_id)
+        self.inspect_durable_memory(entity_id, memory_id)
+        entity.memory_service.delete(memory_id)
 
     async def emit_signal(self, request: EmitSignalRequest) -> SignalHistoryEntry:
         if not isinstance(request, EmitSignalRequest) or not isinstance(

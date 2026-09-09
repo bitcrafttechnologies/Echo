@@ -241,12 +241,44 @@ Phase 5 stops here.
 - Completed the Phase 7 character slice with bounded provider-neutral context
   assembly and deterministic relevant retrieval across Entity character data.
 
-Phase 7D stops here. Phase 8 replay and behavior work has not begun.
+### Phase 7E — durable semantic and character memory
+
+Phase 7E is a required continuity gate before Phase 8. It extends, rather than
+replaces, the typed memory, retention, consolidation, SQLite, and Character
+Context work already completed in Phases 5–7.
+
+- Echo, never an inference provider, owns the canonical memory store and commit
+  policy.
+- Durable records are Entity-scoped and distinguish semantic knowledge from
+  conservative character development. Authored Entity seed files remain
+  immutable baselines.
+- Candidate decisions explicitly report committed, merged, rejected, or
+  deferred outcomes. Active, superseded, and archived durable records remain
+  inspectable, and corrections preserve prior provenance.
+- Provenance is typed and enforced by Core. Only trusted experience or
+  observation Signals may create direct-experience provenance; model output
+  cannot claim it.
+- SQLite uses dedicated memory tables in the configured local database rather
+  than hiding memory inside ordinary persistent-state keys. Production startup
+  must actually select that store.
+- Cross-session consolidation retains concise evidence references or candidate
+  records, not complete transcripts.
+- Retrieval remains provider-neutral, lexical, hard-bounded, and ranked by
+  relevance, importance, recency, type, and Entity scope. Embeddings are not a
+  Core requirement.
+- Persistence failures are reported through Runtime logging while a successful
+  conversational response remains usable.
+- Acceptance requires a genuinely fresh Runtime/store instance with no replayed
+  transcript, plus Entity-isolation and provider-swap coverage.
+
+Phase 7E does not add intentions, behavior policy, reflection-driven trait
+mutation, autonomous forgetting, a vector database, or a transcript archive.
+Phase 8 replay and behavior work has not begun.
 
 ## Deferred
 
 Remaining runtime APIs, Console, concrete model providers,
-character-memory persistence, replay, Medulla transports, edge ML, robotics, and
+advanced autonomous memory, replay, Medulla transports, edge ML, robotics, and
 advanced task behavior remain deferred to the phases defined in the plan.
 
 ## Persistent character vertical track
@@ -262,7 +294,7 @@ advanced task behavior remain deferred to the phases defined in the plan.
 - Phase 6: retention scoring, consolidation, and learned preferences —
   completed in memory; durable persistence remains deferred.
 - Phase 7: compact, provider-neutral Character Context Builder and retrieval —
-  completed; durable character-memory persistence remains deferred.
+  completed; Phase 7E adds durable semantic and character-development memory.
 - Phase 8: proposed intentions, behavior arbitration, and autonomous curiosity.
 - Phase 9: evidence-based, bounded, auditable character evolution.
 - Phase 10 and later: embodiment signals constrain state, goals, and behavior.

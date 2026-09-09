@@ -126,6 +126,14 @@ important memory references, and current context. Service reads return
 detached snapshots. Relationship learning and durable persistence remain later
 operations; presentation adapters cannot mutate this state directly.
 
+Phase 7E adds Entity-scoped durable-memory reads and explicit lifecycle
+controls through `get_durable_memories`, `inspect_durable_memory`,
+`archive_durable_memory`, and `delete_durable_memory`. Results expose semantic
+or character-development type, provenance, source references, confidence,
+importance, active/superseded/archived status, timestamps, access data, and
+version links. Conversation handlers, providers, and adapters do not perform
+raw repository operations.
+
 ## Developer commands
 
 `DeveloperCommandDispatcher.execute()` accepts one of the immutable command

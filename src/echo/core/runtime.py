@@ -470,6 +470,30 @@ class Runtime:
             )
         return self._copy_state(entity.state)
 
+    def report_error(
+        self,
+        operation: str,
+        error: BaseException,
+        *,
+        entity_id: str | None = None,
+        signal_id: str | None = None,
+        action_id: str | None = None,
+    ) -> None:
+        """Surface a recoverable subsystem failure through normal diagnostics."""
+
+        self._log(
+            RuntimeEventType.ERROR,
+            entity_id=entity_id,
+            signal_id=signal_id,
+            action_id=action_id,
+            metadata={
+                "operation": operation,
+                "error_type": type(error).__name__,
+                "message": str(error),
+                "recoverable": True,
+            },
+        )
+
     def _apply_signal_influence(
         self,
         entity_id: str,

@@ -10,3 +10,4 @@ build/
 *.gguf
 .env*
 /echo.toml
+/.echo/

@@ -842,11 +842,33 @@ These are roadmap deferrals, not missing Phase 7D acceptance criteria.
   render the same canonical system message, while offline backends receive the
   same request contract.
 
+## Phase 7E durable memory
+
+- Production startup now opens the configured SQLite database for ordinary
+  persistent Entity state and durable memory; the default local path is
+  `.echo/echo.sqlite3` beside the selected configuration file.
+- Durable semantic and character-development records are Entity-scoped and
+  carry canonical keys, typed provenance, source references, confidence,
+  importance, lifecycle status, versions, access data, and supersession links.
+- `MemoryService` applies Echo-owned commit policy. It rejects model knowledge
+  as personal memory, protects direct-experience provenance, merges exact
+  duplicates, and conservatively defers character development without repeated
+  reflected evidence.
+- Normal declarative UserMessage evidence is extracted conservatively after a
+  successful response. A failed durable write is logged as recoverable and
+  does not remove that response.
+- `CharacterContextBuilder` injects only bounded active memories and records
+  access. Fresh-runtime tests prove retrieval without transcript replay and
+  across provider changes.
+- RuntimeService and HTTP APIs expose list, inspect, archive, and explicit
+  delete operations. No memory UI, embedding store, autonomous decay,
+  intention, or reflection engine was added.
+
 ## Next task
 
-Stop after Phase 7D. Do not begin Phase 8, arbitrary Python hot replacement,
-general event/history storage, semantic-memory persistence, Signal replay,
-intentions, or behavior policy without separate authorization.
+Stop after Phase 7E. Do not begin Phase 8, arbitrary Python hot replacement,
+general event/history storage, Signal replay, intentions, or behavior policy
+without separate authorization.
 
 ## Important files
 
@@ -894,6 +916,13 @@ intentions, or behavior policy without separate authorization.
   and structured exhaustion.
 - `src/echo/entity/memory.py` — five typed, Entity-owned memory record classes,
   importance scoring, consolidation validation, and bounded audit histories.
+- `src/echo/entity/memory_store.py` — durable record/candidate vocabulary,
+  provenance and lifecycle policy, repository protocol, and bounded retrieval.
+- `src/echo/state/sqlite_memory.py` — transactional SQLite durable-memory
+  repository with Entity-scoped inspection, supersession, archive, and delete.
+- `tests/test_phase7e_durable_memory.py` — restart, provider independence,
+  Entity isolation, provenance, deduplication, supersession, correction,
+  character conservatism, failure degradation, and bounded retrieval coverage.
 - `tests/test_phase5f_integration.py` — complete fallback/restore attribution,
   mode switching, optional-provider, and character continuity acceptance.
 - `tests/test_config.py` — Phase 6A parsing, environment precedence,

@@ -173,3 +173,19 @@ validates repeated retained episodic evidence, confidence, target scope, and
 contradictions before creating semantic, preference, or relationship memory.
 Accepted and rejected decisions are auditable; providers never receive a direct
 character mutation path.
+
+## ADR-018: Durable memory uses an Entity-scoped repository and Core policy
+
+Status: accepted
+
+Phase 7E stores semantic knowledge and conservative character development in
+dedicated tables in Echo's configured local SQLite database. `MemoryService`
+owns candidate validation, provenance enforcement, duplicate merging,
+supersession, archival, deletion, and bounded retrieval for exactly one Entity.
+Inference providers can propose information but cannot write the repository or
+assert direct experience. Authored Entity seed files remain unchanged.
+
+The initial retrieval implementation is deterministic lexical ranking with
+importance and recency tie-breakers. This keeps Core local-first and
+inspectable; embedding retrieval may be added behind the repository/service
+boundary later without becoming the persistence authority.

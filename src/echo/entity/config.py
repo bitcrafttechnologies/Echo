@@ -11,6 +11,8 @@ from echo.core.entity import Entity
 from echo.entity.drives import DriveProfile
 from echo.entity.identity import EntityIdentity
 from echo.entity.traits import TraitProfile
+from echo.entity.memory_store import MemoryService
+from echo.entity.state_store import StateStore
 
 
 class EntitySeedError(ValueError):
@@ -24,12 +26,19 @@ class EntitySeed:
     drives: DriveProfile
     character_guidance: str
 
-    def create_entity(self) -> Entity:
+    def create_entity(
+        self,
+        *,
+        state_store: StateStore | None = None,
+        memory_service: MemoryService | None = None,
+    ) -> Entity:
         return Entity(
             self.identity.entity_id,
             identity=self.identity,
             traits=self.traits,
             drives=self.drives,
+            state_store=state_store,
+            memory_service=memory_service,
         )
 
 

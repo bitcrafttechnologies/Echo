@@ -95,6 +95,12 @@ class HistoryConfig:
 
 
 @dataclass(slots=True, kw_only=True, frozen=True)
+class PersistenceConfig:
+    enabled: bool = True
+    database_path: Path = Path(".echo/echo.sqlite3")
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
 class OpenRouterSettings:
     enabled: bool = False
     api_key: str | None = field(default=None, repr=False)
@@ -195,6 +201,7 @@ class EchoConfig:
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     history: HistoryConfig = field(default_factory=HistoryConfig)
+    persistence: PersistenceConfig = field(default_factory=PersistenceConfig)
     providers: ProviderRoutingConfig = field(default_factory=ProviderRoutingConfig)
     api: ApiServerConfig = field(default_factory=ApiServerConfig)
     console: ConsoleConfig = field(default_factory=ConsoleConfig)
@@ -262,6 +269,8 @@ _ENV_OVERRIDES: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
     (("history", "actions"), ("ECHO_HISTORY_ACTIONS",)),
     (("history", "logs"), ("ECHO_HISTORY_LOGS",)),
     (("history", "errors"), ("ECHO_HISTORY_ERRORS",)),
+    (("persistence", "enabled"), ("ECHO_PERSISTENCE_ENABLED",)),
+    (("persistence", "database_path"), ("ECHO_DATABASE_PATH",)),
     (("providers", "mode"), ("ECHO_PROVIDER_MODE",)),
     (("providers", "preference"), ("ECHO_PROVIDER_PREFERENCE",)),
     (("providers", "history_limit"), ("ECHO_PROVIDER_HISTORY_LIMIT",)),
@@ -484,7 +493,7 @@ class _Reader:
 
 def _parse_config(raw: Mapping[str, Any], *, source: str | Path | None) -> EchoConfig:
     reader = _Reader(raw)
-    allowed_top = {"runtime", "logging", "history", "providers", "api", "console"}
+    allowed_top = {"runtime", "logging", "history", "persistence", "providers", "api", "console"}
     for key in raw:
         if key not in allowed_top:
             reader.issue(key, "unknown top-level configuration table")
@@ -494,6 +503,7 @@ def _parse_config(raw: Mapping[str, Any], *, source: str | Path | None) -> EchoC
     history = reader.section(
         "history", {"signals", "tasks", "actions", "logs", "errors"}
     )
+    persistence = reader.section("persistence", {"enabled", "database_path"})
     providers = reader.section(
         "providers",
         {"mode", "preference", "history_limit", "openrouter", "lan", "offline"},
@@ -651,6 +661,22 @@ def _parse_config(raw: Mapping[str, Any], *, source: str | Path | None) -> EchoC
                 )
                 for name in ("signals", "tasks", "actions", "logs", "errors")
             }
+        ),
+        persistence=PersistenceConfig(
+            enabled=reader.boolean(persistence, "persistence.enabled", True),
+            database_path=(
+                _resolve_config_path(
+                    str(
+                        reader.text(
+                            persistence,
+                            "persistence.database_path",
+                            ".echo/echo.sqlite3",
+                        )
+                    ),
+                    source,
+                )
+                or Path(".echo/echo.sqlite3").resolve(strict=False)
+            ),
         ),
         providers=ProviderRoutingConfig(
             mode=mode,

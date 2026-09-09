@@ -5,6 +5,11 @@ entities. The implementation currently includes an optional HTTP adapter while
 the kernel remains independent of web, LLM, ROS, and semantic-memory
 dependencies.
 
+Durable semantic and character-development memory is owned by each Entity and
+stored locally in SQLite. Cognition providers receive only bounded relevant
+records; they are never the canonical memory layer and cannot assert personal
+experience or write memory directly.
+
 The character architecture amendment establishes a second foundational rule:
 Echo—not an inference model—owns Entity identity and continuity. Its design and
 vertical phase integration are documented in `docs/CHARACTER_ARCHITECTURE.md`.

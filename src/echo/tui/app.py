@@ -130,6 +130,7 @@ def _entity(data: dict[str, Any]) -> list[str]:
         ("Drives", "drives"), ("Self model / embodiment", "self_model"),
         ("Attention", "attention_candidates"),
         ("Memory", "memory"),
+        ("Durable memory", "durable_memory"),
     )
     lines.append("")
     for label, key in labels:

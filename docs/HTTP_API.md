@@ -122,6 +122,21 @@ bounded Phase 3 subscription. Runtime publication never waits for network I/O;
 a slow client drops events according to its requested policy. Disconnecting
 always closes and removes that client's subscription.
 
+## Durable memory
+
+- `GET /entities/{entity_id}/memories` lists inspectable durable records. The
+  optional `status` and `type` query fields filter lifecycle state and semantic
+  versus character-development memory.
+- `GET /entities/{entity_id}/memories/{memory_id}` returns one Entity-owned
+  record, including provenance, confidence, importance, source references,
+  timestamps, access data, and supersession links.
+- `POST /entities/{entity_id}/memories/{memory_id}/archive` deactivates a record
+  while preserving its audit history.
+- `DELETE /entities/{entity_id}/memories/{memory_id}` explicitly removes a
+  record.
+
+Provider adapters and Console clients never access SQLite directly.
+
 ## Errors
 
 Request-schema errors use FastAPI's standard `422` response. Runtime service

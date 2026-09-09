@@ -11,6 +11,7 @@ from echo.config import (
     LoggingConfig,
     OfflineProviderSettings,
     OpenRouterSettings,
+    PersistenceConfig,
     ProviderRoutingConfig,
     RuntimeConfig,
     load_config,
@@ -77,6 +78,19 @@ from echo.entity.memory import (
     SemanticMemory,
     WorkingMemory,
 )
+from echo.entity.memory_store import (
+    DurableMemoryRecord,
+    DurableMemoryStatus,
+    DurableMemoryType,
+    InMemoryMemoryRepository,
+    MemoryCandidate,
+    MemoryCommitAction,
+    MemoryCommitDecision,
+    MemoryRepository,
+    MemoryService,
+    MemorySourceType,
+    user_statement_candidates,
+)
 from echo.entity.relationships import RelationshipState, RelationshipStore
 from echo.entity.self_model import SelfModel
 from echo.entity.state import InternalState
@@ -87,6 +101,12 @@ from echo.state.sqlite import (
     StateStoreClosedError,
     StateStoreError,
     StateStoreSchemaError,
+)
+from echo.state.sqlite_memory import (
+    MEMORY_SCHEMA_VERSION,
+    MemoryStoreClosedError,
+    MemoryStoreError,
+    SQLiteMemoryRepository,
 )
 from echo.entity.traits import TraitEvidence, TraitProfile
 from echo.developer_commands import (
@@ -121,6 +141,7 @@ from echo.runtime_service import (
     ActionQuery,
     ApplySignalInfluenceRequest,
     CharacterStateResult,
+    DurableMemoryResult,
     ConfigurationReloadUnavailableError,
     ConfigurationValidationServiceError,
     EmitSignalRequest,
@@ -275,6 +296,10 @@ __all__ = [
     "ConsoleConfig",
     "DeveloperCommandDispatcher",
     "DeveloperCommandError",
+    "DurableMemoryRecord",
+    "DurableMemoryResult",
+    "DurableMemoryStatus",
+    "DurableMemoryType",
     "Entity",
     "EntitySeed",
     "EntitySeedError",
@@ -296,6 +321,7 @@ __all__ = [
     "HistoryConfig",
     "InvalidTaskTransition",
     "InMemoryLogSink",
+    "InMemoryMemoryRepository",
     "InMemoryStateStore",
     "InvalidRequestError",
     "InvalidCharacterInfluenceError",
@@ -324,6 +350,15 @@ __all__ = [
     "LoggingConfig",
     "load_entity_seed",
     "MemoryKind",
+    "MemoryCandidate",
+    "MemoryCommitAction",
+    "MemoryCommitDecision",
+    "MemoryRepository",
+    "MemoryService",
+    "MemorySourceType",
+    "MemoryStoreClosedError",
+    "MemoryStoreError",
+    "MEMORY_SCHEMA_VERSION",
     "MemoryRetentionDecision",
     "LogsCommand",
     "MockProvider",
@@ -352,6 +387,7 @@ __all__ = [
     "OfflineProviderStatus",
     "OfflineUnloadError",
     "OfflineProviderSettings",
+    "PersistenceConfig",
     "ProviderAttempt",
     "ProviderInspectionResult",
     "ProviderCapability",
@@ -403,6 +439,7 @@ __all__ = [
     "RuntimeSubscriptionRequest",
     "Scheduler",
     "SQLiteStateStore",
+    "SQLiteMemoryRepository",
     "Signal",
     "SignalHistory",
     "SignalHistoryEntry",
@@ -442,6 +479,7 @@ __all__ = [
     "TraitProfile",
     "UnknownCommandError",
     "WorkingMemory",
+    "user_statement_candidates",
     "load_config",
     "parse_config",
     "parse_developer_command",

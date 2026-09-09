@@ -32,7 +32,8 @@
             <article><span>Drives</span><pre>{pretty(selected.character.drives ?? {})}</pre></article>
             <article><span>Self-model & embodiment</span><pre>{pretty(selected.character.self_model ?? {})}</pre></article>
             <article><span>Attention</span><pre>{pretty(selected.character.attention_candidates ?? [])}</pre></article>
-            <article><span>Typed memory</span><pre>{pretty(selected.character.memory ?? {})}</pre></article>
+            <article><span>Typed working memory</span><pre>{pretty(selected.character.memory ?? {})}</pre></article>
+            <article><span>Durable memory</span><pre>{pretty(selected.character.durable_memory ?? [])}</pre></article>
           </div>
         </section>
         <section class="handlers"><h4>Registered handlers</h4>{#if selected.handlers.registrations.length}<div class="table">{#each selected.handlers.registrations as handler}<div><code>{handler.signal}</code><span>{handler.signal_kind}</span><strong>{handler.handler}</strong></div>{/each}</div>{:else}<p class="empty">No handlers registered.</p>{/if}</section>

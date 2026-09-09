@@ -257,6 +257,38 @@ def create_app(service: RuntimeServiceProtocol) -> FastAPI:
     ) -> dict[str, Any]:
         return _as_dict(service.inspect_relationship(entity_id, subject_id))
 
+    @app.get("/entities/{entity_id}/memories", tags=["memory"])
+    async def list_durable_memories(
+        entity_id: str,
+        memory_status: str | None = Query(default=None, alias="status"),
+        memory_type: str | None = Query(default=None, alias="type"),
+    ) -> dict[str, Any]:
+        return _as_dict(
+            service.get_durable_memories(
+                entity_id, status=memory_status, memory_type=memory_type
+            )
+        )
+
+    @app.get("/entities/{entity_id}/memories/{memory_id}", tags=["memory"])
+    async def inspect_durable_memory(
+        entity_id: str, memory_id: str
+    ) -> dict[str, Any]:
+        return _as_dict(service.inspect_durable_memory(entity_id, memory_id))
+
+    @app.post("/entities/{entity_id}/memories/{memory_id}/archive", tags=["memory"])
+    async def archive_durable_memory(
+        entity_id: str, memory_id: str
+    ) -> dict[str, Any]:
+        return _as_dict(service.archive_durable_memory(entity_id, memory_id))
+
+    @app.delete(
+        "/entities/{entity_id}/memories/{memory_id}",
+        tags=["memory"],
+        status_code=status.HTTP_204_NO_CONTENT,
+    )
+    async def delete_durable_memory(entity_id: str, memory_id: str) -> None:
+        service.delete_durable_memory(entity_id, memory_id)
+
     @app.get("/signals", tags=["signals"])
     async def list_signals(
         limit: int | None = Query(default=20, ge=0),

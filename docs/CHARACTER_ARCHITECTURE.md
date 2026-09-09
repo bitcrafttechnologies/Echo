@@ -251,8 +251,27 @@ bounded provider-neutral snapshot of identity, traits, categorized state,
 internal state, drives, attention, relationships, memories, active goal IDs, self-model,
 and environment for each cognition request. The configured host reconstructs
 this provider-independent character across a graceful development restart.
-Durable character-memory storage remains separate from ordinary StateStore
-persistence.
+Phase 7E makes semantic knowledge and lived character development durable
+through an Entity-scoped `MemoryRepository` and Echo-owned `MemoryService`.
+These boundaries share the configured local SQLite database with ordinary
+state while using separate tables and APIs. They do not serialize memory into
+ordinary StateStore keys.
+
+The existing `CharacterMemory` type remains the typed memory domain/container;
+"character development memory" is a distinct durable record kind and must not
+be confused with that container. Static identity, traits, drives, and authored
+character guidance remain immutable baselines.
+
+Candidate extraction is untrusted input. Core validates content bounds,
+canonical keys, provenance, confidence, importance, Entity scope, duplicate
+matches, and supersession before committing. Direct-experience provenance can
+only originate from trusted Core observations or experience Signals, never
+from model prose. Concise evidence may survive restart so consolidation can
+accumulate across sessions without retaining whole transcripts.
+
+Active durable records participate in the existing hard-bounded Character
+Context retrieval path. Ranking remains deterministic and provider-neutral;
+semantic/vector retrieval is still optional rather than a Core dependency.
 
 ## Required tests
 

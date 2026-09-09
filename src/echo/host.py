@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Mapping
+import logging
 import os
 from pathlib import Path
 from typing import Any
@@ -16,9 +17,32 @@ from echo.core.signal import Signal
 from echo.entity.context import CharacterContextBuilder, CharacterContextRequest
 from echo.entity.config import EntitySeedError, load_entity_seed
 from echo.entity.memory import WorkingMemory
+from echo.entity.memory_store import MemoryService, user_statement_candidates
 from echo.providers import InferenceRequest, ProviderRouter
 from echo.restart import GracefulRestartCoordinator, RestartTarget
 from echo.runtime_service import RuntimeService
+from echo.state import SQLiteMemoryRepository, SQLiteStateStore
+
+
+logger = logging.getLogger(__name__)
+
+
+def _entity_with_persistence(seed: Any, config: EchoConfig) -> tuple[Entity, tuple[object, ...]]:
+    if not config.persistence.enabled:
+        return seed.create_entity(), ()
+    database = config.persistence.database_path
+    database.parent.mkdir(parents=True, exist_ok=True)
+    state_store = SQLiteStateStore(database)
+    try:
+        memory_repository = SQLiteMemoryRepository(database)
+    except Exception:
+        state_store.close()
+        raise
+    entity = seed.create_entity(
+        state_store=state_store,
+        memory_service=MemoryService(seed.identity.entity_id, memory_repository),
+    )
+    return entity, (state_store, memory_repository)
 
 
 def selected_config_path(path: str | Path | None = None) -> Path | None:
@@ -98,7 +122,14 @@ def register_user_message_handler(
         result = await provider_router.infer(
             InferenceRequest(
                 prompt=text.strip(),
-                instructions=character_guidance,
+                instructions=(
+                    (character_guidance or "")
+                    + "\n\nMemory truthfulness: Durable memories and their provenance "
+                    "are authoritative for the Entity's personal history. Never describe "
+                    "model/background knowledge as a remembered personal experience. "
+                    "If no direct-experience memory supports an event, say that the "
+                    "Entity does not have that lived experience."
+                ).strip(),
                 context=character_context.to_dict(),
                 metadata={
                     "entity_id": entity.id,
@@ -131,6 +162,29 @@ def register_user_message_handler(
                 metadata=memory_metadata,
             )
         )
+        try:
+            if entity.memory_service.durable:
+                for candidate in user_statement_candidates(
+                    text,
+                    signal_id=signal.id,
+                    action_id=action.id,
+                    subject_id=subject_id,
+                ):
+                    entity.commit_memory_candidate(candidate)
+        except Exception as error:
+            logger.error(
+                "durable memory commit failed",
+                extra={"entity_id": entity.id, "signal_id": signal.id},
+                exc_info=True,
+            )
+            if entity.runtime is not None:
+                entity.runtime.report_error(
+                    "memory.commit",
+                    error,
+                    entity_id=entity.id,
+                    signal_id=signal.id,
+                    action_id=action.id,
+                )
         return action
 
 
@@ -154,7 +208,7 @@ def build_host(
         raise RuntimeError("Echo API is disabled by configuration")
     bit_directory = selected_entity_seed_path("bit", config_path=config_path)
     seed = load_entity_seed(bit_directory)
-    entity = seed.create_entity()
+    entity, persistence_resources = _entity_with_persistence(seed, config)
     router = config.create_provider_router()
     register_user_message_handler(
         entity,
@@ -183,7 +237,9 @@ def build_host(
             manager,
         )
         generation_config = current_manager.active_config
-        fresh_entity = _clone_entity_generation(current_entity)
+        fresh_entity, fresh_persistence = _entity_with_persistence(
+            seed, generation_config
+        )
         fresh_router = generation_config.create_provider_router()
         register_user_message_handler(
             fresh_entity,
@@ -199,13 +255,13 @@ def build_host(
         )
         return RestartTarget(
             runtime=fresh_runtime,
-            resources=(fresh_router, fresh_manager),
+            resources=(fresh_router, fresh_manager, *fresh_persistence),
         )
 
     coordinator = GracefulRestartCoordinator(
         runtime,
         build_fresh_generation,
-        resources=(router, manager),
+        resources=(router, manager, *persistence_resources),
     )
     service = RuntimeService(
         runtime,

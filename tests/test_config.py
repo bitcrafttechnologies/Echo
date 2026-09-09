@@ -39,6 +39,8 @@ class EchoConfigurationTests(unittest.TestCase):
         self.assertIsInstance(config, EchoConfig)
         self.assertEqual(config.providers.mode, ProviderMode.AUTO)
         self.assertEqual(config.history.signals, 1000)
+        self.assertTrue(config.persistence.enabled)
+        self.assertEqual(config.persistence.database_path.name, "echo.sqlite3")
         self.assertEqual(config.console.api_url, "http://127.0.0.1:8000")
 
         runtime = config.create_runtime()
@@ -63,6 +65,9 @@ tasks = 12
 actions = 13
 logs = 14
 errors = 15
+[persistence]
+enabled = true
+database_path = "data/echo.sqlite3"
 [providers]
 mode = "lan"
 preference = ["lan", "remote", "offline"]
@@ -103,6 +108,10 @@ session_name = "echo-test"
         self.assertFalse(config.runtime.auto_start)
         self.assertEqual(config.logging.level, "WARNING")
         self.assertEqual(config.history.errors, 15)
+        self.assertEqual(
+            config.persistence.database_path,
+            (Path(directory) / "data" / "echo.sqlite3").resolve(),
+        )
         self.assertEqual(config.providers.mode, ProviderMode.AUTO)
         self.assertEqual(
             config.providers.preference,

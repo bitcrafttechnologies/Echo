@@ -60,6 +60,10 @@ class HostChatHandlerTests(unittest.TestCase):
                 self.assertEqual(entity.identity.name, "Bit")
                 self.assertEqual(entity.identity.entity_type, "embodied_companion")
                 self.assertEqual(entity.traits.values["curiosity"], 0.82)
+                self.assertEqual(
+                    type(entity.state_store).__name__, "SQLiteStateStore"
+                )
+                self.assertTrue(entity.memory_service.durable)
             finally:
                 runtime.stop()
 

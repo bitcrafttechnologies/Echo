@@ -32,6 +32,19 @@ from echo.entity.memory import (
     SemanticMemory,
     WorkingMemory,
 )
+from echo.entity.memory_store import (
+    DurableMemoryRecord,
+    DurableMemoryStatus,
+    DurableMemoryType,
+    InMemoryMemoryRepository,
+    MemoryCandidate,
+    MemoryCommitAction,
+    MemoryCommitDecision,
+    MemoryRepository,
+    MemoryService,
+    MemorySourceType,
+    user_statement_candidates,
+)
 from echo.entity.relationships import RelationshipState, RelationshipStore
 from echo.entity.self_model import SelfModel
 from echo.entity.state import InternalState
@@ -48,6 +61,9 @@ __all__ = [
     "AttentionCandidate",
     "AttentionProposal",
     "DriveProfile",
+    "DurableMemoryRecord",
+    "DurableMemoryStatus",
+    "DurableMemoryType",
     "EntityIdentity",
     "CharacterMemory",
     "CharacterMemoryRecord",
@@ -57,7 +73,14 @@ __all__ = [
     "MemoryImportance",
     "InternalState",
     "InMemoryStateStore",
+    "InMemoryMemoryRepository",
     "MemoryKind",
+    "MemoryCandidate",
+    "MemoryCommitAction",
+    "MemoryCommitDecision",
+    "MemoryRepository",
+    "MemoryService",
+    "MemorySourceType",
     "MemoryRetentionDecision",
     "PreferenceMemory",
     "RelationshipMemory",
@@ -71,4 +94,5 @@ __all__ = [
     "TraitEvidence",
     "TraitProfile",
     "WorkingMemory",
+    "user_statement_candidates",
 ]
