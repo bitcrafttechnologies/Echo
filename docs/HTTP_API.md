@@ -32,6 +32,9 @@ app = create_app(runtime_service)
 | `POST` | `/runtime/recording` | `start_recording()` |
 | `DELETE` | `/runtime/recording` | `stop_recording()` |
 | `GET` | `/runtime/recording` | `get_recording_status()` |
+| `POST` | `/runtime/replays` | `start_replay()` |
+| `POST` | `/runtime/replays/{replay_id}/step` | `replay_next_step()` |
+| `GET` | `/runtime/replays/{replay_id}` | `get_replay_status()` |
 | `POST` | `/runtime/restart` | `request_restart()` |
 | `GET` | `/runtime/restart/{operation_id}` | `get_restart_operation()` |
 | `GET` | `/configuration` | `inspect_configuration()` |
@@ -79,6 +82,16 @@ error. `DELETE` first detaches capture, then drains pending writes before
 closing the session. Starting twice or stopping without a session returns
 `409`. Initial file failures return `500`; background failures appear in
 status and as recoverable Runtime error events without failing Signal routing.
+
+`POST /runtime/replays` accepts `path`, a `mode` of `signal`, `sequential`, or
+`step`, the explicit safe `safety_policy` value `record_only`, and a
+`signal_id` only for single-Signal mode. Single and sequential modes finish
+before returning; step mode returns `ready`. Each step request emits exactly
+one recorded Signal through `Runtime.emit()`. Status includes progress and the
+mapping between original and newly assigned runtime Signal IDs. Replayed
+Signals use a current receipt timestamp while preserving original identity and
+time under `metadata.echo_replay`. No replay endpoint enables external Action
+execution.
 
 Provider mode writes accept `{"mode":"auto"}`, with `remote`, `lan`, and
 `offline` as the other allowed values. Inference accepts a required `prompt`

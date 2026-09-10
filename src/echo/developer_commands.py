@@ -22,8 +22,10 @@ from echo.runtime_service import (
     SetStateValuesRequest,
     SignalQuery,
     StartRecordingRequest,
+    StartReplayRequest,
     TaskQuery,
 )
+from echo.runtime_replay import ReplayMode, ReplaySafetyPolicy
 
 
 class DeveloperCommandError(Exception):
@@ -86,6 +88,11 @@ class CommandName(StrEnum):
     RECORDING_START = "recording.start"
     RECORDING_STOP = "recording.stop"
     RECORDING_STATUS = "recording.status"
+    REPLAY_SIGNAL = "replay.signal"
+    REPLAY_SESSION = "replay.session"
+    REPLAY_STEP = "replay.step"
+    REPLAY_NEXT = "replay.next"
+    REPLAY_STATUS = "replay.status"
 
 
 def _copy(value: Any) -> Any:
@@ -126,6 +133,48 @@ class RecordingStopCommand:
 @dataclass(slots=True, kw_only=True, frozen=True)
 class RecordingStatusCommand:
     name: CommandName = field(default=CommandName.RECORDING_STATUS, init=False)
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
+class ReplayStartCommand:
+    path: str
+    mode: ReplayMode
+    signal_id: str | None = None
+    safety_policy: ReplaySafetyPolicy = ReplaySafetyPolicy.RECORD_ONLY
+    name: CommandName = field(init=False)
+
+    def __post_init__(self) -> None:
+        _require_identifier(self.path, "path")
+        if self.mode is ReplayMode.SIGNAL:
+            _require_identifier(self.signal_id or "", "signal_id")
+            name = CommandName.REPLAY_SIGNAL
+        elif self.mode is ReplayMode.SEQUENTIAL:
+            name = CommandName.REPLAY_SESSION
+        elif self.mode is ReplayMode.STEP:
+            name = CommandName.REPLAY_STEP
+        else:
+            raise CommandValidationError("unsupported replay mode")
+        if self.safety_policy is not ReplaySafetyPolicy.RECORD_ONLY:
+            raise CommandValidationError("unsupported replay safety policy")
+        object.__setattr__(self, "name", name)
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
+class ReplayNextCommand:
+    replay_id: str
+    name: CommandName = field(default=CommandName.REPLAY_NEXT, init=False)
+
+    def __post_init__(self) -> None:
+        _require_identifier(self.replay_id, "replay_id")
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
+class ReplayStatusCommand:
+    replay_id: str
+    name: CommandName = field(default=CommandName.REPLAY_STATUS, init=False)
+
+    def __post_init__(self) -> None:
+        _require_identifier(self.replay_id, "replay_id")
 
 
 @dataclass(slots=True, kw_only=True, frozen=True)
@@ -289,6 +338,9 @@ DeveloperCommand = (
     | RecordingStartCommand
     | RecordingStopCommand
     | RecordingStatusCommand
+    | ReplayStartCommand
+    | ReplayNextCommand
+    | ReplayStatusCommand
     | EntityInspectCommand
     | SignalListCommand
     | SignalInspectCommand
@@ -335,6 +387,9 @@ class DeveloperCommandDispatcher:
                 RecordingStartCommand,
                 RecordingStopCommand,
                 RecordingStatusCommand,
+                ReplayStartCommand,
+                ReplayNextCommand,
+                ReplayStatusCommand,
                 EntityInspectCommand,
                 SignalListCommand,
                 SignalInspectCommand,
@@ -384,6 +439,19 @@ class DeveloperCommandDispatcher:
             return await self._service.stop_recording()
         if isinstance(command, RecordingStatusCommand):
             return self._service.get_recording_status()
+        if isinstance(command, ReplayStartCommand):
+            return await self._service.start_replay(
+                StartReplayRequest(
+                    path=command.path,
+                    mode=command.mode,
+                    signal_id=command.signal_id,
+                    safety_policy=command.safety_policy,
+                )
+            )
+        if isinstance(command, ReplayNextCommand):
+            return await self._service.replay_next_step(command.replay_id)
+        if isinstance(command, ReplayStatusCommand):
+            return self._service.get_replay_status(command.replay_id)
         if isinstance(command, EntityInspectCommand):
             return self._service.inspect_entity(command.entity_id)
         if isinstance(command, SignalListCommand):
@@ -464,6 +532,18 @@ def parse_developer_command(text: str) -> DeveloperCommand:
             _parse_json_object(tokens[3], "metadata") if len(tokens) == 4 else {}
         )
         return RecordingStartCommand(path=tokens[2], metadata=metadata)
+    if len(tokens) == 4 and tokens[:2] == ["replay", "signal"]:
+        return ReplayStartCommand(
+            path=tokens[2], mode=ReplayMode.SIGNAL, signal_id=tokens[3]
+        )
+    if len(tokens) == 3 and tokens[:2] == ["replay", "session"]:
+        return ReplayStartCommand(path=tokens[2], mode=ReplayMode.SEQUENTIAL)
+    if len(tokens) == 3 and tokens[:2] == ["replay", "step"]:
+        return ReplayStartCommand(path=tokens[2], mode=ReplayMode.STEP)
+    if len(tokens) == 3 and tokens[:2] == ["replay", "next"]:
+        return ReplayNextCommand(replay_id=tokens[2])
+    if len(tokens) == 3 and tokens[:2] == ["replay", "status"]:
+        return ReplayStatusCommand(replay_id=tokens[2])
     if tokens == ["signal", "list"]:
         return SignalListCommand()
     if tokens == ["task", "list"]:

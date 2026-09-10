@@ -2,7 +2,7 @@
 
 ## Current implementation
 
-Echo through Phase 8B plus the `0.4-tui_core` interface track consists of a
+Echo through Phase 8C plus the `0.4-tui_core` interface track consists of a
 minimal, standard-library Python kernel, an optional FastAPI HTTP and WebSocket
 adapter, and a separate SvelteKit development console shell. The documented,
 transport-agnostic runtime
@@ -38,8 +38,20 @@ timestamps, developer metadata, enqueued/written/dropped counts, and the latest
 error. Queue overflow and background serialization/write failures emit
 recoverable Runtime errors and never change Signal routing or stop Echo.
 Runtime service, HTTP, structured developer commands, and one-shot `echoc`
-commands expose start, stop, and status. Replay, playback timing, and web
-Console controls remain deferred.
+commands expose start, stop, and status.
+
+Phase 8C injects validated Phase 8 recordings through the same
+`Runtime.emit()` entry path as live Signals. It supports one selected Signal,
+complete file-order sequential replay, and step-by-step sessions that emit one
+Signal per advance. Replayed Signals receive fresh IDs and current UTC receipt
+timestamps while a reserved `metadata.echo_replay` marker preserves original
+Signal ID, original timestamp, recording timestamp, session/replay IDs, and
+the active safety policy. Status exposes mode, progress, lifecycle, the
+original-to-new ID mapping, timestamps, and failures through Runtime service,
+HTTP, structured commands, and one-shot `echoc`. Only the explicit
+`record_only` safety policy exists: normal handlers and Action intent history
+still run, but replay never calls an external Action executor. Original-delay
+timing and web Console replay controls remain deferred.
 
 Phase 7A introduces the small, runtime-checkable `StateStore` boundary between
 Entity state access and storage. Ordinary state is explicitly separated into
@@ -264,6 +276,8 @@ The public package exports:
 - `RuntimeSessionRecorder`, `RecordingState`, `RecordingStatus`,
   `StartRecordingRequest`, recording service errors, and recording developer
   command schemas
+- `RuntimeSignalReplay`, replay mode/state/status and safety policy schemas,
+  `StartReplayRequest`, replay service errors, and replay command schemas
 - `Entity`
 - `HandlerRegistry`
 - `Task` and `TaskStatus`
@@ -728,10 +742,13 @@ execution remains deferred to Medulla.
 - Phase 8B (`0.8.2`): explicit live Runtime recording lifecycle with a bounded
   non-blocking capture queue, worker-thread durable writes, status and metadata,
   recoverable failure reporting, and runtime API/HTTP/CLI operations.
+- Phase 8C (`0.8.3`): one-Signal, sequential, and step-by-step replay through
+  normal Runtime emission, preserved origin metadata, fresh receipt identity
+  and time, inspectable progress, and an explicit record-only Action policy.
 
 ## In progress
 
-Nothing. Phase 8B and the Phase 7 character slice are complete. The Phase 1F
+Nothing. Phase 8C and the Phase 7 character slice are complete. The Phase 1F
 TUI integration requirement remains active across all later phases.
 
 ## Known issues
@@ -740,7 +757,10 @@ TUI integration requirement remains active across all later phases.
   wiring a database path into the configured root host remains deferred.
 - Runtime histories and structured logs remain bounded in memory; Phase 8B can
   explicitly record live Signal sessions but does not archive general logs.
-- Signal replay and session playback are not implemented.
+- Original-delay, accelerated, and real-time replay timing are not implemented;
+  Phase 8C sequential replay intentionally dispatches as fast as handlers allow.
+- Replay has no web Console surface; Runtime API, HTTP, and `echoc` controls are
+  available.
 - Actions have no Medulla executor or transport.
 - The root launcher provides a development process host; production service
   supervision, packaging, and deployment remain intentionally unspecified.
@@ -763,7 +783,7 @@ TUI integration requirement remains active across all later phases.
   Phase 8A recording validates that constraint recursively and rejects unsafe
   values explicitly.
 
-These are roadmap deferrals, not missing Phase 8B acceptance criteria.
+These are roadmap deferrals, not missing Phase 8C acceptance criteria.
 
 ## Architecture decisions
 
@@ -907,6 +927,12 @@ These are roadmap deferrals, not missing Phase 8B acceptance criteria.
   normal recoverable Runtime error stream. Explicit stop still attempts to
   close the session. Restart is rejected while a recording is active or failed
   but not yet stopped, preventing a session from silently crossing Runtime IDs.
+- Replay always reconstructs a base `Signal` with a fresh ID and current UTC
+  receipt timestamp and dispatches it through `Runtime.emit`. Original identity
+  and time remain under the runtime-owned `metadata.echo_replay` marker.
+- Replay exposes only `record_only`: Action objects remain observable Runtime
+  intent records, and no external Action executor is invoked. Any future policy
+  permitting external effects must be added and selected explicitly.
 
 ## Phase 7E durable memory
 
@@ -948,10 +974,25 @@ These are roadmap deferrals, not missing Phase 8B acceptance criteria.
 - Phase 8B does not read sessions into a Runtime, replay Signals, control replay
   speed, add a web Console surface, or introduce behavior policy.
 
+## Phase 8C Signal replay
+
+- `RuntimeSignalReplay` loads only the validated Phase 8A representation and
+  selects either one recorded ID or all Signal records in file order.
+- One-Signal and sequential modes finish in the start operation. Step mode
+  starts `ready` and each explicit advance dispatches exactly one Signal.
+- Each replayed Signal has a fresh ID/current timestamp and a runtime-owned
+  `echo_replay` metadata marker containing original ID/time, record time,
+  session/replay IDs, and `record_only` policy.
+- Runtime service operations expose start, step, and status. HTTP uses
+  `/runtime/replays`; developer and `echoc` commands use `replay signal`,
+  `replay session`, `replay step`, `replay next`, and `replay status`.
+- Handler failures mark replay failed, remain visible in normal Signal/Task
+  history and Runtime error logs, and do not kill Echo.
+
 ## Next task
 
-Stop after Phase 8B. Do not begin Signal replay, session playback or timing,
-web Console recording controls, intentions, or behavior policy without
+Stop after Phase 8C. Do not begin replay timing, web Console replay controls,
+external Action execution policy, intentions, or behavior arbitration without
 separate authorization.
 
 ## Important files
@@ -974,6 +1015,8 @@ separate authorization.
   schemas, safe JSON validation, JSON Lines writer, and non-replaying reader.
 - `src/echo/runtime_recording.py` — Phase 8B bounded asynchronous live capture,
   lifecycle state/status, worker-thread writes, and recoverable failure path.
+- `src/echo/runtime_replay.py` — Phase 8C normal-path Signal reconstruction,
+  sequential/step control, origin metadata, progress, and safety policy.
 - `src/echo/core/entity.py` — Entity public abstraction.
 - `src/echo/entity/state_store.py` — StateStore protocol, state lifetime
   categories, in-memory implementation, and session compatibility view.
@@ -1082,6 +1125,8 @@ separate authorization.
 - `tests/test_phase8b_runtime_recording.py` — live/nested capture, causal
   linkage, non-blocking slow writes, failure isolation, lifecycle, HTTP, and
   CLI coverage.
+- `tests/test_phase8c_signal_replay.py` — one-Signal, ordered, step, origin
+  metadata, Action safety, developer-command, and HTTP replay coverage.
 - `tests/test_entity.py` — Entity and registry unit tests.
 - `tests/test_task_action.py` — Task and Action unit tests.
 - `tests/test_scheduler_runtime.py` — Scheduler and Runtime unit tests.
@@ -1110,8 +1155,8 @@ separate authorization.
 - `docs/RUNTIME_API.md` — stable Phase 3 service, command, subscription, and
   response/error contract.
 - `docs/HTTP_API.md` — Phase 4A HTTP and Phase 4B WebSocket contracts.
-- `docs/SIGNAL_RECORDING.md` — Phase 8A JSON Lines schema, ordering, linkage,
-  validation, safety, and compatibility contract.
+- `docs/SIGNAL_RECORDING.md` — Phase 8 JSON Lines schema, live recording,
+  replay metadata, modes, control surfaces, and safety contract.
 - `examples/runtime_api_contract.py` — executable documented contract example.
 - `docs/ARCHITECTURE.md` — implemented architecture boundary.
 - `docs/CHARACTER_ARCHITECTURE.md` — persistent character design and phased

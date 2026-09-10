@@ -354,6 +354,9 @@ Common endpoints include:
 | `POST` | `/runtime/recording` | Start Signal session recording |
 | `GET` | `/runtime/recording` | Inspect recording status and metadata |
 | `DELETE` | `/runtime/recording` | Stop recording after draining writes |
+| `POST` | `/runtime/replays` | Start one, sequential, or step Signal replay |
+| `POST` | `/runtime/replays/{id}/step` | Advance a step replay by one Signal |
+| `GET` | `/runtime/replays/{id}` | Inspect replay progress and safety policy |
 | `GET` | `/entities` | List entities |
 | `GET` | `/entities/{id}` | Inspect an entity |
 | `POST` | `/signals` | Emit a signal |
@@ -393,6 +396,19 @@ echoc record stop
 
 Recording writes run outside Signal dispatch. Status reports the session and
 output metadata plus enqueued, written, dropped, and failed-write information.
+
+Replay uses the same `Runtime.emit()` path as live Signals. Replayed Signals
+receive a fresh ID and current timestamp while retaining their original ID and
+timestamp under `metadata.echo_replay`. Phase 8C permits only the `record_only`
+safety policy and never invokes external Action execution:
+
+```console
+echoc replay signal .echo/development-session.jsonl <signal-id>
+echoc replay session .echo/development-session.jsonl
+echoc replay step .echo/development-session.jsonl
+echoc replay next <replay-id>
+echoc replay status <replay-id>
+```
 
 ## Subscribe to runtime events
 

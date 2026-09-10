@@ -58,6 +58,8 @@ Stable service error codes are:
 | `restart_conflict` | Another restart operation is already active. |
 | `recording_conflict` | A recording lifecycle operation conflicts with current state. |
 | `recording_failed` | A recording session could not be started. |
+| `replay_conflict` | A replay conflicts with the active replay or its lifecycle. |
+| `replay_failed` | A recording could not be loaded or a replay Signal failed. |
 
 Transport adapters may map these errors to their own response mechanisms, but
 the mapping is outside this contract and must not leak back into Echo Core.
@@ -70,6 +72,9 @@ the mapping is outside this contract and must not leak back into Echo Core.
 | `start_recording(request)` | `StartRecordingRequest` | `RecordingStatus` | Creates a versioned session file and starts non-blocking Signal capture. |
 | `stop_recording()` | none | `RecordingStatus` | Detaches capture, drains queued writes, and closes the session. |
 | `get_recording_status()` | none | `RecordingStatus` | State, path, session metadata, counts, and latest recording error. |
+| `start_replay(request)` | `StartReplayRequest` | `ReplayStatus` | Runs one Signal/session immediately or creates a step replay; policy is `record_only`. |
+| `replay_next_step(replay_id)` | replay ID | `ReplayStatus` | Emits exactly one remaining Signal through `Runtime.emit()`. |
+| `get_replay_status(replay_id)` | replay ID | `ReplayStatus` | Progress, original/replayed IDs, timestamps, mode, policy, and error. |
 | `request_restart(request)` | `RestartRequest` | `RestartOperationResult` | Requires exact confirmation and state preservation; starts tracked work. |
 | `get_restart_operation(operation_id)` | ID | `RestartOperationResult` | Current restart phase and old/new Runtime IDs. |
 | `get_entities()` | none | `tuple[EntityResult, ...]` | Detached Entity views. |
@@ -151,6 +156,11 @@ runtime service contract.
 | `recording.start` | `RecordingStartCommand` | `start_recording` |
 | `recording.stop` | `RecordingStopCommand` | `stop_recording` |
 | `recording.status` | `RecordingStatusCommand` | `get_recording_status` |
+| `replay.signal` | `ReplayStartCommand` | `start_replay` |
+| `replay.session` | `ReplayStartCommand` | `start_replay` |
+| `replay.step` | `ReplayStartCommand` | `start_replay` |
+| `replay.next` | `ReplayNextCommand` | `replay_next_step` |
+| `replay.status` | `ReplayStatusCommand` | `get_replay_status` |
 | `entity.inspect` | `EntityInspectCommand` | `inspect_entity` |
 | `signal.list` | `SignalListCommand` | `get_recent_signals` |
 | `signal.inspect` | `SignalInspectCommand` | `inspect_signal` |
@@ -179,6 +189,11 @@ runtime status
 record start <output-path> ['<metadata-json-object>']
 record stop
 record status
+replay signal <recording-path> <recorded-signal-id>
+replay session <recording-path>
+replay step <recording-path>
+replay next <replay-id>
+replay status <replay-id>
 entity inspect <entity-id>
 signal list
 signal inspect <signal-id>

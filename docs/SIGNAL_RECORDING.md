@@ -1,7 +1,8 @@
 # Signal Recording Format
 
-Phase 8A defines recording format version 1. It deliberately does not define
-Signal injection, timing playback, CLI commands, or Console controls.
+Phase 8A defines recording format version 1. Phase 8B records live sessions,
+and Phase 8C replays their Signals. Real-time/original-delay playback and web
+Console controls remain outside this format.
 
 ## Container
 
@@ -98,4 +99,53 @@ recoverable Runtime error; it never changes Signal routing results or stops
 Echo.
 
 Runtime service, HTTP, and one-shot `echoc record start|status|stop` operations
-control the lifecycle. Replay and playback are not part of Phase 8B.
+control the lifecycle.
+
+## Signal replay
+
+Phase 8C loads a validated recording and supports three modes: one selected
+Signal, the complete session in file order, or a step session that injects
+exactly one Signal per advance operation. Every injection calls the normal
+`Runtime.emit()` entry path, so scheduling, handler Tasks, Action intent
+records, histories, logs, and an active recorder behave exactly as they do for
+live Signals.
+
+A replay creates a new Signal ID and assigns its current UTC receipt time to
+`Signal.timestamp`. It preserves source, type, payload, and ordinary metadata,
+then reserves `metadata.echo_replay` for this marker:
+
+```json
+{
+  "replayed": true,
+  "replay_id": "replay-1",
+  "recording_session_id": "session-1",
+  "original_signal_id": "signal-1",
+  "original_timestamp": "2026-09-09T12:00:01+00:00",
+  "recorded_at": "2026-09-09T12:00:02+00:00",
+  "safety_policy": "record_only"
+}
+```
+
+The original timestamp and identity therefore remain inspectable without
+pretending the replay arrived in the past. A pre-existing `echo_replay` value
+in recorded metadata is replaced so stored input cannot forge the runtime
+marker.
+
+Phase 8C exposes only the explicit `record_only` replay safety policy. Handlers
+may produce Echo Action intent records through the normal Runtime path, but
+replay does not call an external Action executor. A future policy that permits
+external effects must be added and selected explicitly; none exists in this
+phase.
+
+Service operations are `start_replay`, `replay_next_step`, and
+`get_replay_status`. HTTP uses `POST /runtime/replays`,
+`POST /runtime/replays/{id}/step`, and `GET /runtime/replays/{id}`. The matching
+one-shot commands are:
+
+```text
+echoc replay signal <recording-path> <recorded-signal-id>
+echoc replay session <recording-path>
+echoc replay step <recording-path>
+echoc replay next <replay-id>
+echoc replay status <replay-id>
+```
