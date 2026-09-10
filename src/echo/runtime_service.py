@@ -18,6 +18,7 @@ from echo.config_reload import (
 )
 from echo.core.action_history import ActionHistoryEntry, ActionStatus
 from echo.core.inspection import json_safe
+from echo.core.recording import RecordingSerializationError, SignalRecordingError
 from echo.core.runtime import Runtime
 from echo.core.runtime_log import RuntimeEventType, RuntimeLogSeverity
 from echo.core.scheduler import SignalPriority
@@ -50,6 +51,11 @@ from echo.restart import (
     RestartError,
     RestartStatus,
     RestartTaskPolicy,
+)
+from echo.runtime_recording import (
+    RecordingState,
+    RecordingStatus,
+    RuntimeSessionRecorder,
 )
 
 
@@ -120,6 +126,14 @@ class RestartConflictError(RuntimeServiceError):
     code = "restart_conflict"
 
 
+class RecordingConflictError(RuntimeServiceError):
+    code = "recording_conflict"
+
+
+class RecordingOperationError(RuntimeServiceError):
+    code = "recording_failed"
+
+
 def _copy(value: Any) -> Any:
     if isinstance(value, Mapping):
         value = dict(value)
@@ -161,6 +175,15 @@ class RestartRequest:
     reason: str
     confirmation: str
     preserve_state: bool
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
+class StartRecordingRequest:
+    """Begin one explicit Signal recording session at a local path."""
+
+    path: str
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+    durable: bool = True
 
 
 @dataclass(slots=True, kw_only=True, frozen=True)
@@ -368,6 +391,14 @@ class RuntimeServiceProtocol(Protocol):
 
     def get_runtime_status(self) -> RuntimeStatusResult: ...
 
+    async def start_recording(
+        self, request: StartRecordingRequest
+    ) -> RecordingStatus: ...
+
+    async def stop_recording(self) -> RecordingStatus: ...
+
+    def get_recording_status(self) -> RecordingStatus: ...
+
     async def request_restart(
         self, request: RestartRequest
     ) -> RestartOperationResult: ...
@@ -489,6 +520,7 @@ class RuntimeService:
         provider_router: ProviderRouter | None = None,
         configuration_manager: RuntimeConfigurationManager | None = None,
         restart_coordinator: GracefulRestartCoordinator | None = None,
+        recording_queue_capacity: int = 1024,
     ) -> None:
         if not isinstance(runtime, Runtime):
             raise InvalidRequestError("runtime must be a Runtime")
@@ -531,12 +563,23 @@ class RuntimeService:
             raise InvalidRequestError(
                 "restart_coordinator must own this Runtime"
             )
+        if (
+            isinstance(recording_queue_capacity, bool)
+            or not isinstance(recording_queue_capacity, int)
+            or recording_queue_capacity < 1
+        ):
+            raise InvalidRequestError(
+                "recording_queue_capacity must be a positive integer"
+            )
         self._runtime = runtime
         self._provider_router = provider_router
         self._configuration_manager = configuration_manager
         self._restart_coordinator = restart_coordinator
         self._restart_operation: RestartOperationResult | None = None
         self._restart_task: asyncio.Task[None] | None = None
+        self._recording: RuntimeSessionRecorder | None = None
+        self._recording_lock = asyncio.Lock()
+        self._recording_queue_capacity = recording_queue_capacity
         self._event_subscriptions: dict[str, RuntimeEventSubscription] = {}
         try:
             self._allowed_state_keys = {
@@ -695,6 +738,73 @@ class RuntimeService:
             restart=snapshot["restart"],
         )
 
+    async def start_recording(
+        self, request: StartRecordingRequest
+    ) -> RecordingStatus:
+        if not isinstance(request, StartRecordingRequest):
+            raise InvalidRequestError(
+                "start_recording requires a StartRecordingRequest"
+            )
+        if not isinstance(request.path, str) or not request.path.strip():
+            raise InvalidRequestError("recording path must not be empty")
+        if not isinstance(request.metadata, Mapping):
+            raise InvalidRequestError("recording metadata must be a mapping")
+        if not isinstance(request.durable, bool):
+            raise InvalidRequestError("recording durable must be a boolean")
+        async with self._recording_lock:
+            current = (
+                self._recording.status if self._recording is not None else None
+            )
+            if (
+                current is not None
+                and current.state is not RecordingState.STOPPED
+                and current.ended_at is None
+            ):
+                raise RecordingConflictError(
+                    "a recording session already exists; stop it before starting another",
+                    details={"recording": current.to_dict()},
+                )
+            try:
+                recording = RuntimeSessionRecorder(
+                    self._runtime,
+                    request.path.strip(),
+                    metadata=dict(request.metadata),
+                    queue_capacity=self._recording_queue_capacity,
+                    durable=request.durable,
+                )
+            except (RecordingSerializationError, TypeError, ValueError) as error:
+                raise InvalidRequestError(
+                    "recording request is invalid",
+                    details={"reason": str(error)},
+                ) from error
+            self._recording = recording
+            try:
+                return await recording.start()
+            except (OSError, RuntimeError, SignalRecordingError) as error:
+                raise RecordingOperationError(
+                    "recording could not be started",
+                    details={"recording": recording.status.to_dict()},
+                ) from error
+
+    async def stop_recording(self) -> RecordingStatus:
+        async with self._recording_lock:
+            recording = self._recording
+            if (
+                recording is None
+                or recording.status.state is RecordingState.IDLE
+                or recording.status.ended_at is not None
+            ):
+                raise RecordingConflictError("no recording session is active")
+            return await recording.stop()
+
+    def get_recording_status(self) -> RecordingStatus:
+        if self._recording is None:
+            return RecordingStatus(
+                state=RecordingState.IDLE,
+                runtime_id=self._runtime.id,
+            )
+        return self._recording.status
+
     async def request_restart(
         self, request: RestartRequest
     ) -> RestartOperationResult:
@@ -720,6 +830,18 @@ class RuntimeService:
             raise RestartConflictError(
                 "a runtime restart is already in progress",
                 details={"operation": current.to_dict()},
+            )
+        recording_status = self.get_recording_status()
+        if (
+            recording_status.state not in {
+                RecordingState.IDLE,
+                RecordingState.STOPPED,
+            }
+            and recording_status.ended_at is None
+        ):
+            raise RestartConflictError(
+                "stop the active recording before restarting the Runtime",
+                details={"recording": recording_status.to_dict()},
             )
         operation = RestartOperationResult(
             operation_id=str(uuid4()),

@@ -56,6 +56,8 @@ Stable service error codes are:
 | `runtime_service_error` | An otherwise unclassified service failure. |
 | `restart_unavailable` | This host has no restart coordinator. |
 | `restart_conflict` | Another restart operation is already active. |
+| `recording_conflict` | A recording lifecycle operation conflicts with current state. |
+| `recording_failed` | A recording session could not be started. |
 
 Transport adapters may map these errors to their own response mechanisms, but
 the mapping is outside this contract and must not leak back into Echo Core.
@@ -65,6 +67,9 @@ the mapping is outside this contract and must not leak back into Echo Core.
 | Operation | Input | Result | Notes |
 | --- | --- | --- | --- |
 | `get_runtime_status()` | none | `RuntimeStatusResult` | Runtime ID, idle/active/stopped status, uptime. |
+| `start_recording(request)` | `StartRecordingRequest` | `RecordingStatus` | Creates a versioned session file and starts non-blocking Signal capture. |
+| `stop_recording()` | none | `RecordingStatus` | Detaches capture, drains queued writes, and closes the session. |
+| `get_recording_status()` | none | `RecordingStatus` | State, path, session metadata, counts, and latest recording error. |
 | `request_restart(request)` | `RestartRequest` | `RestartOperationResult` | Requires exact confirmation and state preservation; starts tracked work. |
 | `get_restart_operation(operation_id)` | ID | `RestartOperationResult` | Current restart phase and old/new Runtime IDs. |
 | `get_entities()` | none | `tuple[EntityResult, ...]` | Detached Entity views. |
@@ -143,6 +148,9 @@ runtime service contract.
 | Command name | Schema | Service operation |
 | --- | --- | --- |
 | `runtime.status` | `RuntimeStatusCommand` | `get_runtime_status` |
+| `recording.start` | `RecordingStartCommand` | `start_recording` |
+| `recording.stop` | `RecordingStopCommand` | `stop_recording` |
+| `recording.status` | `RecordingStatusCommand` | `get_recording_status` |
 | `entity.inspect` | `EntityInspectCommand` | `inspect_entity` |
 | `signal.list` | `SignalListCommand` | `get_recent_signals` |
 | `signal.inspect` | `SignalInspectCommand` | `inspect_signal` |
@@ -168,6 +176,9 @@ The optional Phase 3 text grammar is intentionally small:
 
 ```text
 runtime status
+record start <output-path> ['<metadata-json-object>']
+record stop
+record status
 entity inspect <entity-id>
 signal list
 signal inspect <signal-id>

@@ -298,6 +298,8 @@ def _event_category(event_type: RuntimeEventType) -> RuntimeEventCategory:
         RuntimeEventType.RUNTIME_STOPPED,
         RuntimeEventType.RUNTIME_RESTARTED,
         RuntimeEventType.CONFIGURATION_RELOAD,
+        RuntimeEventType.RECORDING_STARTED,
+        RuntimeEventType.RECORDING_STOPPED,
     }:
         return RuntimeEventCategory.RUNTIME_CHANGED
     return RuntimeEventCategory.ERROR

@@ -9,7 +9,7 @@ import json
 import math
 import os
 from os import PathLike, fspath
-from typing import Any, TextIO
+from typing import Any, Protocol, TextIO, runtime_checkable
 from uuid import uuid4
 
 from echo.core.signal import Signal
@@ -43,6 +43,13 @@ class RecordKind(str, Enum):
     SESSION_STARTED = "session.started"
     SIGNAL = "signal"
     SESSION_ENDED = "session.ended"
+
+
+@runtime_checkable
+class SignalCaptureSink(Protocol):
+    """Non-blocking Runtime hook implemented by session recording services."""
+
+    def capture(self, signal: Signal, *, linkage: RuntimeLinkage) -> None: ...
 
 
 def _required_string(value: Any, path: str) -> str:

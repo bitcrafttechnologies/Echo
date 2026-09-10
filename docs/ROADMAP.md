@@ -273,7 +273,8 @@ Context work already completed in Phases 5–7.
 
 Phase 7E does not add intentions, behavior policy, reflection-driven trait
 mutation, autonomous forgetting, a vector database, or a transcript archive.
-Phase 8 replay and behavior work has not begun.
+Phase 8A's durable Signal format and Phase 8B's live Runtime recording controls
+are complete. Replay, playback, and behavior work have not begun.
 
 ## Deferred
 

@@ -2,7 +2,7 @@
 
 ## Current implementation
 
-Echo through Phase 8A plus the `0.4-tui_core` interface track consists of a
+Echo through Phase 8B plus the `0.4-tui_core` interface track consists of a
 minimal, standard-library Python kernel, an optional FastAPI HTTP and WebSocket
 adapter, and a separate SvelteKit development console shell. The documented,
 transport-agnostic runtime
@@ -23,8 +23,23 @@ default. The validator accepts only ordinary JSON values with finite numbers
 and string object keys; it rejects arbitrary Python objects rather than using
 pickle, type imports, hooks, or `repr` fallbacks. The reader validates session
 ordering, version, record types, IDs, timestamps, and final counts but never
-injects a Signal. Runtime integration, start/stop commands, replay, playback
-timing, and Console controls remain later Phase 8 work.
+injects a Signal. Phase 8A itself does not attach to a Runtime or implement
+recording controls, replay, or playback timing; Phase 8B supplies only the live
+recording and control layer described below.
+
+Phase 8B connects that format to live Runtime activity. One explicitly started
+session attaches a post-dispatch capture sink, including Signals emitted from
+Entity handlers as well as service and transport callers. Dispatch only makes
+a non-waiting handoff to a bounded queue; safe serialization, JSON encoding,
+flush, and storage synchronization run through a worker thread. Stop detaches
+capture before draining queued records and writing the session footer. Status
+exposes lifecycle state, format/version, Runtime/session IDs, output path,
+timestamps, developer metadata, enqueued/written/dropped counts, and the latest
+error. Queue overflow and background serialization/write failures emit
+recoverable Runtime errors and never change Signal routing or stop Echo.
+Runtime service, HTTP, structured developer commands, and one-shot `echoc`
+commands expose start, stop, and status. Replay, playback timing, and web
+Console controls remain deferred.
 
 Phase 7A introduces the small, runtime-checkable `StateStore` boundary between
 Entity state access and storage. Ordinary state is explicitly separated into
@@ -246,6 +261,9 @@ The public package exports:
 - recording format/version constants, `JsonLinesSignalRecorder`, typed session
   and Signal records, `RuntimeLinkage`, `RecordedSession`, validation errors,
   and the non-replaying record decoder/reader
+- `RuntimeSessionRecorder`, `RecordingState`, `RecordingStatus`,
+  `StartRecordingRequest`, recording service errors, and recording developer
+  command schemas
 - `Entity`
 - `HandlerRegistry`
 - `Task` and `TaskStatus`
@@ -707,18 +725,21 @@ execution remains deferred to Medulla.
 - Phase 8A (`0.8.1`): versioned UTF-8 JSON Lines representation for Signal
   recording sessions, safe JSON-only validation, durable incremental writes,
   optional Runtime linkage IDs, and non-mutating format reads.
+- Phase 8B (`0.8.2`): explicit live Runtime recording lifecycle with a bounded
+  non-blocking capture queue, worker-thread durable writes, status and metadata,
+  recoverable failure reporting, and runtime API/HTTP/CLI operations.
 
 ## In progress
 
-Nothing. Phase 8A and the Phase 7 character slice are complete. The Phase 1F
+Nothing. Phase 8B and the Phase 7 character slice are complete. The Phase 1F
 TUI integration requirement remains active across all later phases.
 
 ## Known issues
 
 - SQLite persists ordinary Entity state explicitly categorized as persistent;
   wiring a database path into the configured root host remains deferred.
-- Runtime histories and structured logs are in memory only. Phase 8A recordings
-  are explicit files and are not yet wired into Runtime lifecycle controls.
+- Runtime histories and structured logs remain bounded in memory; Phase 8B can
+  explicitly record live Signal sessions but does not archive general logs.
 - Signal replay and session playback are not implemented.
 - Actions have no Medulla executor or transport.
 - The root launcher provides a development process host; production service
@@ -742,7 +763,7 @@ TUI integration requirement remains active across all later phases.
   Phase 8A recording validates that constraint recursively and rejects unsafe
   values explicitly.
 
-These are roadmap deferrals, not missing Phase 8A acceptance criteria.
+These are roadmap deferrals, not missing Phase 8B acceptance criteria.
 
 ## Architecture decisions
 
@@ -877,6 +898,15 @@ These are roadmap deferrals, not missing Phase 8A acceptance criteria.
   lines by default. A missing final session record represents an incomplete
   session, while invalid ordering, versions, timestamps, or counts fail
   explicitly. Reading a recording performs no replay or Runtime mutation.
+- Live recording attaches once at the Runtime's post-dispatch boundary so
+  nested and externally submitted Signals share one path. Dispatch uses only a
+  bounded `put_nowait`; serialization and filesystem work execute outside the
+  event-loop path. Overflow is explicit and counted rather than applying
+  backpressure to Signal handlers.
+- Recording write failures detach capture, retain failed status, and enter the
+  normal recoverable Runtime error stream. Explicit stop still attempts to
+  close the session. Restart is rejected while a recording is active or failed
+  but not yet stopped, preventing a session from silently crossing Runtime IDs.
 
 ## Phase 7E durable memory
 
@@ -900,11 +930,29 @@ These are roadmap deferrals, not missing Phase 8A acceptance criteria.
   delete operations. No memory UI, embedding store, autonomous decay,
   intention, or reflection engine was added.
 
+## Phase 8B runtime session recording
+
+- `RuntimeSessionRecorder` owns a bounded queue and the Phase 8A JSON Lines
+  writer. Header creation, each Signal write, flush/`fsync`, and footer closure
+  run through `asyncio.to_thread`.
+- Runtime capture occurs after routing results are known and includes optional
+  Runtime, Entity, Task, and Action linkage. Snapshots come from detached Signal
+  history data rather than retaining caller-owned payload containers.
+- `RuntimeServiceProtocol` exposes typed start, stop, and status operations.
+  HTTP uses `POST`, `DELETE`, and `GET /runtime/recording`; developer commands
+  use `record start`, `record stop`, and `record status`, including remote
+  one-shot `echoc` translation.
+- Lifecycle conflicts are structured. Status distinguishes idle, starting,
+  recording, stopping, stopped, and failed, and retains output/session metadata
+  plus capture counts and the last failure.
+- Phase 8B does not read sessions into a Runtime, replay Signals, control replay
+  speed, add a web Console surface, or introduce behavior policy.
+
 ## Next task
 
-Stop after Phase 8A. Do not begin Signal replay, automatic Runtime recording,
-session playback, CLI/Console recording controls, intentions, or behavior
-policy without separate authorization.
+Stop after Phase 8B. Do not begin Signal replay, session playback or timing,
+web Console recording controls, intentions, or behavior policy without
+separate authorization.
 
 ## Important files
 
@@ -924,6 +972,8 @@ policy without separate authorization.
 - `src/echo/core/signal.py` — Signal representation and serialization.
 - `src/echo/core/recording.py` — Phase 8A versioned session/Signal record
   schemas, safe JSON validation, JSON Lines writer, and non-replaying reader.
+- `src/echo/runtime_recording.py` — Phase 8B bounded asynchronous live capture,
+  lifecycle state/status, worker-thread writes, and recoverable failure path.
 - `src/echo/core/entity.py` — Entity public abstraction.
 - `src/echo/entity/state_store.py` — StateStore protocol, state lifetime
   categories, in-memory implementation, and session compatibility view.
@@ -1029,6 +1079,9 @@ policy without separate authorization.
 - `tests/test_signal.py` — Signal unit tests.
 - `tests/test_phase8a_signal_recording.py` — Phase 8A format, durability,
   lifecycle, safety rejection, partial-session, and compatibility coverage.
+- `tests/test_phase8b_runtime_recording.py` — live/nested capture, causal
+  linkage, non-blocking slow writes, failure isolation, lifecycle, HTTP, and
+  CLI coverage.
 - `tests/test_entity.py` — Entity and registry unit tests.
 - `tests/test_task_action.py` — Task and Action unit tests.
 - `tests/test_scheduler_runtime.py` — Scheduler and Runtime unit tests.

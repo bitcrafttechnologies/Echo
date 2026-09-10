@@ -351,6 +351,9 @@ Common endpoints include:
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
 | `GET` | `/runtime/status` | Inspect runtime health and uptime |
+| `POST` | `/runtime/recording` | Start Signal session recording |
+| `GET` | `/runtime/recording` | Inspect recording status and metadata |
+| `DELETE` | `/runtime/recording` | Stop recording after draining writes |
 | `GET` | `/entities` | List entities |
 | `GET` | `/entities/{id}` | Inspect an entity |
 | `POST` | `/signals` | Emit a signal |
@@ -379,6 +382,17 @@ curl -X POST http://127.0.0.1:8000/signals \
     }
   }'
 ```
+
+The one-shot terminal client exposes the same recording operations:
+
+```console
+echoc record start .echo/development-session.jsonl '{"label":"debug"}'
+echoc record status
+echoc record stop
+```
+
+Recording writes run outside Signal dispatch. Status reports the session and
+output metadata plus enqueued, written, dropped, and failed-write information.
 
 ## Subscribe to runtime events
 

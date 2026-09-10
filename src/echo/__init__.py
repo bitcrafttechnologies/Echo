@@ -42,6 +42,7 @@ from echo.core.recording import (
     RecordingFormatError,
     RecordingSerializationError,
     RuntimeLinkage,
+    SignalCaptureSink,
     SessionEndedRecord,
     SessionStartedRecord,
     SignalRecord,
@@ -141,6 +142,9 @@ from echo.developer_commands import (
     LogsCommand,
     ProviderModeCommand,
     ProviderStatusCommand,
+    RecordingStartCommand,
+    RecordingStatusCommand,
+    RecordingStopCommand,
     RuntimeStatusCommand,
     SignalInjectCommand,
     SignalInspectCommand,
@@ -169,6 +173,8 @@ from echo.runtime_service import (
     LogResult,
     ProviderInspectionResult,
     ResourceNotFoundError,
+    RecordingConflictError,
+    RecordingOperationError,
     RestartConflictError,
     RestartOperationResult,
     RestartRequest,
@@ -181,10 +187,16 @@ from echo.runtime_service import (
     SignalEmissionError,
     SignalInfluenceResult,
     SignalQuery,
+    StartRecordingRequest,
     StateResult,
     StateUpdateNotAllowedError,
     TaskNotCancellableError,
     TaskQuery,
+)
+from echo.runtime_recording import (
+    RecordingState,
+    RecordingStatus,
+    RuntimeSessionRecorder,
 )
 from echo.runtime_events import (
     BackpressurePolicy,

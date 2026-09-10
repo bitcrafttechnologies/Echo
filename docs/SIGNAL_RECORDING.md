@@ -78,3 +78,24 @@ Readers reject an unknown format, version, record type, invalid timestamp,
 mixed session IDs, invalid ordering, or an ending count that does not match the
 Signal lines. Reading validates data only; it never constructs domain-specific
 Python subclasses or submits a Signal to a Runtime.
+
+## Runtime recording
+
+Phase 8B attaches at the Runtime's post-dispatch boundary, so Signals emitted by
+developers, transports, and Entity handlers all use the same capture path.
+Dispatch makes a non-waiting handoff to a bounded queue. Safe serialization,
+file writes, flushing, and storage synchronization run in a worker thread.
+Stopping first detaches capture and then drains the queue before writing the
+session ending record.
+
+`RecordingStatus` reports `idle`, `starting`, `recording`, `stopping`,
+`stopped`, or `failed`, along with Runtime/session IDs, path, format/version,
+timestamps, session metadata, enqueued/written/dropped counts, and the latest
+error. A full queue drops the newly completed Signal and emits a recoverable
+Runtime error rather than delaying dispatch. A background serialization or
+write failure detaches capture, marks the session failed, and emits a
+recoverable Runtime error; it never changes Signal routing results or stops
+Echo.
+
+Runtime service, HTTP, and one-shot `echoc record start|status|stop` operations
+control the lifecycle. Replay and playback are not part of Phase 8B.

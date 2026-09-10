@@ -169,10 +169,15 @@ class HttpEchoClient:
             StateSetCommand, TaskCancelCommand, TaskInspectCommand, TaskListCommand,
             ProviderModeCommand, ProviderStatusCommand,
             ConfigInspectCommand, ConfigReloadCommand, ConfigSetCommand,
+            RecordingStartCommand, RecordingStatusCommand, RecordingStopCommand,
             parse_developer_command,
         )
         parsed = parse_developer_command(command)
         if isinstance(parsed, RuntimeStatusCommand): path, method, body = "/runtime/status", "GET", None
+        elif isinstance(parsed, RecordingStartCommand):
+            path, method, body = "/runtime/recording", "POST", {"path": parsed.path, "metadata": dict(parsed.metadata)}
+        elif isinstance(parsed, RecordingStopCommand): path, method, body = "/runtime/recording", "DELETE", None
+        elif isinstance(parsed, RecordingStatusCommand): path, method, body = "/runtime/recording", "GET", None
         elif isinstance(parsed, EntityInspectCommand): path, method, body = f"/entities/{quote(parsed.entity_id, safe='')}", "GET", None
         elif isinstance(parsed, SignalListCommand): path, method, body = "/signals?limit=100", "GET", None
         elif isinstance(parsed, SignalInspectCommand): path, method, body = f"/signals/{quote(parsed.signal_id, safe='')}", "GET", None

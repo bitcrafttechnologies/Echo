@@ -21,6 +21,7 @@ from echo.runtime_service import (
     RuntimeServiceProtocol,
     SetStateValuesRequest,
     SignalQuery,
+    StartRecordingRequest,
     TaskQuery,
 )
 
@@ -82,6 +83,9 @@ class CommandName(StrEnum):
     CONFIG_INSPECT = "config.inspect"
     CONFIG_SET = "config.set"
     CONFIG_RELOAD = "config.reload"
+    RECORDING_START = "recording.start"
+    RECORDING_STOP = "recording.stop"
+    RECORDING_STATUS = "recording.status"
 
 
 def _copy(value: Any) -> Any:
@@ -99,6 +103,29 @@ def _require_identifier(value: str, name: str) -> None:
 @dataclass(slots=True, kw_only=True, frozen=True)
 class RuntimeStatusCommand:
     name: CommandName = field(default=CommandName.RUNTIME_STATUS, init=False)
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
+class RecordingStartCommand:
+    path: str
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+    name: CommandName = field(default=CommandName.RECORDING_START, init=False)
+
+    def __post_init__(self) -> None:
+        _require_identifier(self.path, "path")
+        if not isinstance(self.metadata, Mapping):
+            raise CommandValidationError("metadata must be a mapping")
+        object.__setattr__(self, "metadata", _copy(dict(self.metadata)))
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
+class RecordingStopCommand:
+    name: CommandName = field(default=CommandName.RECORDING_STOP, init=False)
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
+class RecordingStatusCommand:
+    name: CommandName = field(default=CommandName.RECORDING_STATUS, init=False)
 
 
 @dataclass(slots=True, kw_only=True, frozen=True)
@@ -259,6 +286,9 @@ class ConfigSetCommand:
 
 DeveloperCommand = (
     RuntimeStatusCommand
+    | RecordingStartCommand
+    | RecordingStopCommand
+    | RecordingStatusCommand
     | EntityInspectCommand
     | SignalListCommand
     | SignalInspectCommand
@@ -302,6 +332,9 @@ class DeveloperCommandDispatcher:
             command,
             (
                 RuntimeStatusCommand,
+                RecordingStartCommand,
+                RecordingStopCommand,
+                RecordingStatusCommand,
                 EntityInspectCommand,
                 SignalListCommand,
                 SignalInspectCommand,
@@ -340,6 +373,17 @@ class DeveloperCommandDispatcher:
     async def _resolve(self, command: DeveloperCommand) -> Any:
         if isinstance(command, RuntimeStatusCommand):
             return self._service.get_runtime_status()
+        if isinstance(command, RecordingStartCommand):
+            return await self._service.start_recording(
+                StartRecordingRequest(
+                    path=command.path,
+                    metadata=command.metadata,
+                )
+            )
+        if isinstance(command, RecordingStopCommand):
+            return await self._service.stop_recording()
+        if isinstance(command, RecordingStatusCommand):
+            return self._service.get_recording_status()
         if isinstance(command, EntityInspectCommand):
             return self._service.inspect_entity(command.entity_id)
         if isinstance(command, SignalListCommand):
@@ -411,6 +455,15 @@ def parse_developer_command(text: str) -> DeveloperCommand:
 
     if tokens == ["runtime", "status"]:
         return RuntimeStatusCommand()
+    if tokens == ["record", "status"]:
+        return RecordingStatusCommand()
+    if tokens == ["record", "stop"]:
+        return RecordingStopCommand()
+    if len(tokens) in {3, 4} and tokens[:2] == ["record", "start"]:
+        metadata = (
+            _parse_json_object(tokens[3], "metadata") if len(tokens) == 4 else {}
+        )
+        return RecordingStartCommand(path=tokens[2], metadata=metadata)
     if tokens == ["signal", "list"]:
         return SignalListCommand()
     if tokens == ["task", "list"]:

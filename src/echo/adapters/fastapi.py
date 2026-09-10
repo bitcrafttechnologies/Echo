@@ -25,6 +25,7 @@ from echo import (
     SetStateValuesRequest,
     Signal,
     SignalQuery,
+    StartRecordingRequest,
     TaskQuery,
 )
 
@@ -106,6 +107,23 @@ class RestartBody(BaseModel):
         )
 
 
+class RecordingStartBody(BaseModel):
+    """Start one explicit local Signal recording session."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    durable: bool = True
+
+    def to_request(self) -> StartRecordingRequest:
+        return StartRecordingRequest(
+            path=self.path,
+            metadata=self.metadata,
+            durable=self.durable,
+        )
+
+
 _ERROR_STATUS = {
     "invalid_request": status.HTTP_400_BAD_REQUEST,
     "not_found": status.HTTP_404_NOT_FOUND,
@@ -118,6 +136,8 @@ _ERROR_STATUS = {
     "invalid_configuration": 422,
     "restart_unavailable": status.HTTP_503_SERVICE_UNAVAILABLE,
     "restart_conflict": status.HTTP_409_CONFLICT,
+    "recording_conflict": status.HTTP_409_CONFLICT,
+    "recording_failed": status.HTTP_500_INTERNAL_SERVER_ERROR,
     "runtime_service_error": status.HTTP_500_INTERNAL_SERVER_ERROR,
 }
 
@@ -174,7 +194,7 @@ def create_app(service: RuntimeServiceProtocol) -> FastAPI:
     if not isinstance(service, RuntimeServiceProtocol):
         raise TypeError("service must implement RuntimeServiceProtocol")
 
-    app = FastAPI(title="Echo Runtime API", version="0.7.4")
+    app = FastAPI(title="Echo Runtime API", version="0.8.2")
 
     @app.exception_handler(RuntimeServiceError)
     async def handle_runtime_service_error(
@@ -198,6 +218,24 @@ def create_app(service: RuntimeServiceProtocol) -> FastAPI:
     @app.get("/runtime/status", tags=["runtime"])
     async def runtime_status() -> dict[str, Any]:
         return _as_dict(service.get_runtime_status())
+
+    @app.post(
+        "/runtime/recording",
+        tags=["runtime"],
+        status_code=status.HTTP_201_CREATED,
+    )
+    async def start_runtime_recording(
+        body: RecordingStartBody,
+    ) -> dict[str, Any]:
+        return _as_dict(await service.start_recording(body.to_request()))
+
+    @app.delete("/runtime/recording", tags=["runtime"])
+    async def stop_runtime_recording() -> dict[str, Any]:
+        return _as_dict(await service.stop_recording())
+
+    @app.get("/runtime/recording", tags=["runtime"])
+    async def runtime_recording_status() -> dict[str, Any]:
+        return _as_dict(service.get_recording_status())
 
     @app.post(
         "/runtime/restart",
