@@ -1,8 +1,8 @@
 # Signal Recording Format
 
 Phase 8A defines recording format version 1. Phase 8B records live sessions,
-Phase 8C replays their Signals, and Phase 8D controls replay timing. Web
-Console controls remain outside this format.
+Phase 8C replays their Signals, Phase 8D controls replay timing, and Phase 8E
+exposes those controls in Echo Console.
 
 ## Container
 
@@ -167,3 +167,20 @@ echoc replay next <replay-id>
 echoc replay cancel <replay-id>
 echoc replay status <replay-id>
 ```
+
+## Echo Console controls
+
+Phase 8E adds a replay panel to Signal Inspector. A developer enters a JSON
+Lines recording path that is available to the Echo host, chooses immediate,
+realtime, accelerated, or manual-step timing, and starts or stops the session.
+The panel reports the loaded recording session ID, lifecycle state, completed
+and remaining Signal counts, percentage progress, speed, and the enforced
+`record_only` Action policy. Manual sessions expose one explicit next-Signal
+control.
+
+The current storage boundary is host-local files and does not expose a remote
+file-list or upload API, so the Console selects a session by its server-local
+path. Starting a replay validates and loads that file through the existing
+Runtime API. Signal detail can replay the selected recorded Signal by original
+ID. Live and retained replayed Signals carry a visible Replay label, and detail
+shows the original Signal ID and timestamp from `metadata.echo_replay`.

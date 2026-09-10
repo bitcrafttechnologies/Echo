@@ -2,7 +2,7 @@
 
 ## Current implementation
 
-Echo through Phase 8D plus the `0.4-tui_core` interface track consists of a
+Echo through Phase 8E plus the `0.4-tui_core` interface track consists of a
 minimal, standard-library Python kernel, an optional FastAPI HTTP and WebSocket
 adapter, and a separate SvelteKit development console shell. The documented,
 transport-agnostic runtime
@@ -62,8 +62,26 @@ monotonic clock and are anchored to the first Signal, avoiding wall-clock
 changes and cumulative drift. Cancellation wakes pending waits and settles at
 a safe Signal boundary without cancelling an active handler. Replay status now
 includes timing, multiplier, cancellation request/terminal state, remaining
-Signals, and original-to-runtime Signal mappings. Web Console replay controls
-remain deferred.
+Signals, and original-to-runtime Signal mappings.
+
+Phase 8E adds replay controls directly to Echo Console's Signal Inspector.
+Developers can select a host-local JSON Lines recording path, replay the whole
+session or the inspected recorded Signal, choose immediate, realtime,
+accelerated, or manual-step timing, advance manual sessions, stop replay, and
+inspect session identity and progress. Replayed traffic is labeled in both
+live and retained lists; Signal detail shows its original recorded ID and
+timestamp. The Console continues to use the Phase 8C/8D HTTP boundary and the
+only available `record_only` safety policy.
+
+The Phase 8 character architecture slice is also implemented. Entity owns
+JSON-safe typed intentions, deterministic behavior arbitration, retained
+decisions, and bounded low-priority curiosity goals. Policy checks confidence,
+capability, explicit external-Action authorization, resources,
+interruptibility, user attention, and relationship trust. An approved policy
+decision contains an Action intent but neither records nor executes it
+implicitly. High-salience attention can create background curiosity work;
+active Entity work defers it rather than interrupting or causing speech,
+movement, or tool use.
 
 Phase 7A introduces the small, runtime-checkable `StateStore` boundary between
 Entity state access and storage. Ordinary state is explicitly separated into
@@ -113,7 +131,7 @@ the Console polls operation progress and reconnects its HTTP status and event
 stream after completion. Its Overview control uses a prepare step plus typed
 confirmation, preventing a stray click from restarting Echo.
 
-The missing Phase 7 character slice is also complete. `CharacterContextBuilder`
+The Phase 7 character slice is also complete. `CharacterContextBuilder`
 assembles bounded, detached, provider-neutral cognition context from identity,
 traits, all ordinary state lifetimes, internal state, drive baselines and
 activation, relevant attention, relationships and typed memories, active goal IDs,
@@ -121,7 +139,7 @@ self-model, and supplied environment. Relevance selection is deterministic and
 hard-limited rather than dumping all Entity data. The host attaches this
 structured context to inference requests and reconstructs provider-independent
 character when it creates a fresh Runtime generation. This does not add Phase
-8 intentions, behavior arbitration, replay, or autonomous goals.
+8 intention proposals or behavior decisions.
 
 Phase 6A adds the single typed `EchoConfig` application schema and a TOML
 loader based on Python's standard-library `tomllib`. Nested sections cover
@@ -761,10 +779,16 @@ execution remains deferred to Medulla.
 - Phase 8D (`0.8.4`): realtime, accelerated, immediate, and manual-step replay
   timing with monotonic relative scheduling, validated multipliers,
   cancellation, and expanded status/API/HTTP/CLI controls.
+- Phase 8E (`0.8.5`): Signal Inspector controls for host-local session
+  selection, one-Signal and session replay, timing, manual advance,
+  cancellation, progress, and explicit replay labels.
+- Phase 8 character: typed JSON-safe intentions, Core behavior arbitration,
+  explicit external-Action authorization, interruptibility, and bounded
+  background curiosity goals without implicit Action recording or execution.
 
 ## In progress
 
-Nothing. Phase 8D and the Phase 7 character slice are complete. The Phase 1F
+Nothing. Phase 8E and the Phase 8 character slice are complete. The Phase 1F
 TUI integration requirement remains active across all later phases.
 
 ## Known issues
@@ -775,8 +799,8 @@ TUI integration requirement remains active across all later phases.
   explicitly record live Signal sessions but does not archive general logs.
 - Timed replay does not catch up by overlapping Signal dispatch when a handler
   takes longer than a scheduled offset; normal Runtime ordering remains serial.
-- Replay has no web Console surface; Runtime API, HTTP, and `echoc` controls are
-  available.
+- Recording session selection in the web Console uses a path available to the
+  Echo host; the current storage API has no remote file browser or upload.
 - Actions have no Medulla executor or transport.
 - The root launcher provides a development process host; production service
   supervision, packaging, and deployment remain intentionally unspecified.
@@ -791,15 +815,15 @@ TUI integration requirement remains active across all later phases.
   and Console connectivity still require restart.
 - Handler enable/disable is not yet represented in the typed application
   schema, so Phase 6B does not attempt unsafe registry mutation.
-- Character memory retention and consolidation are in memory only. There is no
-  durable character persistence, behavior policy, or durable character audit
-  store.
+- Character behavior decisions and curiosity goals are retained in the Entity
+  and survive a coordinated development restart copy, but do not yet use a
+  dedicated durable store or durable character audit log.
 - Scheduler `periodic` is a priority class, not a recurring timer facility.
 - Signal payloads must already contain JSON-compatible values for `to_json`;
   Phase 8A recording validates that constraint recursively and rejects unsafe
   values explicitly.
 
-These are roadmap deferrals, not missing Phase 8D acceptance criteria.
+These are roadmap deferrals, not missing Phase 8E acceptance criteria.
 
 ## Architecture decisions
 
@@ -1005,6 +1029,14 @@ These are roadmap deferrals, not missing Phase 8D acceptance criteria.
   `replay session`, `replay step`, `replay next`, and `replay status`.
 - Handler failures mark replay failed, remain visible in normal Signal/Task
   history and Runtime error logs, and do not kill Echo.
+- Signal Inspector drives replay only through the shared HTTP service. Since
+  recordings are host-local files, the current selector is an explicit host
+  path rather than a browser upload or a parallel storage catalog.
+- `Intention` parameters are copied through strict JSON serialization. Behavior
+  policy is Core-owned; external behavior requires explicit authorization, and
+  even approval creates only an unexecuted Action intent.
+- Attention-derived curiosity stays at background priority or lower and is
+  deferred while the Entity has active work.
 
 ## Phase 8D replay timing
 
@@ -1025,11 +1057,30 @@ These are roadmap deferrals, not missing Phase 8D acceptance criteria.
   `replay cancel`; `replay session` accepts realtime, accelerated multiplier,
   immediate, or manual-step timing.
 
+## Phase 8E Console replay and character behavior
+
+- Signal Inspector accepts a recording path available to the Echo host and
+  starts one-Signal or sequential replay through the existing HTTP API.
+- Timing controls expose immediate, realtime, accelerated multiplier, and
+  manual-step modes. Status polling reports lifecycle, session ID, completed
+  and remaining counts, percentage, speed, and the record-only safety policy.
+- Active sessions can be stopped; manual sessions expose one explicit advance
+  operation. History refresh is triggered only when progress or terminal state
+  changes.
+- Live and retained replayed traffic has a visible Replay badge. Signal detail
+  labels replayed activity and shows its original recorded Signal ID/time.
+- `BehaviorController` owns bounded typed intention, decision, and curiosity
+  state for an Entity. `BehaviorPolicy` gates external Actions, resources,
+  capability, confidence, relationship trust, user attention, and active-work
+  interruptibility without executing behavior.
+- High-scoring attention can create only a background-priority curiosity goal;
+  active work produces a deferred goal. Entity inspection and coordinated
+  restart copies preserve the resulting character state.
+
 ## Next task
 
-Stop after Phase 8D. Do not begin web Console replay controls, external Action
-execution policy, intentions, or behavior arbitration without separate
-authorization.
+Stop after Phase 8E. Do not begin Phase 9, external Action execution, or any
+broader autonomous behavior without separate authorization.
 
 ## Important files
 
@@ -1054,6 +1105,8 @@ authorization.
 - `src/echo/runtime_replay.py` — Phase 8C/8D normal-path Signal reconstruction,
   monotonic timing, cooperative cancellation, origin metadata, progress, and
   safety policy.
+- `src/echo/entity/behavior.py` — Phase 8 typed intentions, Core arbitration,
+  explicit external authorization, and bounded curiosity goals.
 - `src/echo/core/entity.py` — Entity public abstraction.
 - `src/echo/entity/state_store.py` — StateStore protocol, state lifetime
   categories, in-memory implementation, and session compatibility view.
@@ -1128,8 +1181,9 @@ authorization.
 - `docs/TUI.md` — terminal usage, parity, boundaries, and integration rule.
 - `console/src/routes/+page.svelte` — initial Echo Console layout, navigation,
   connection lifecycle, live activity, and Signal stream coordination.
-- `console/src/lib/SignalInspector.svelte` — live/history Signal lists, filters,
-  selection detail, and pause/resume controls.
+- `console/src/lib/SignalInspector.svelte` — live/history Signal inspection,
+  replayed-activity labeling, one-Signal/session replay controls, timing,
+  progress, manual advance, and stop.
 - `console/src/lib/TaskInspector.svelte` — active/history Task lists, hierarchy,
   detail, and cancellation.
 - `console/src/lib/EntityInspector.svelte` — Entity state, handlers, active
@@ -1166,6 +1220,9 @@ authorization.
   metadata, Action safety, developer-command, and HTTP replay coverage.
 - `tests/test_phase8d_replay_timing.py` — relative timing, acceleration,
   immediate/manual modes, cancellation, status, command, and HTTP coverage.
+- `tests/test_phase8_character_behavior.py` — safe intentions, behavior gates,
+  interruptibility, curiosity priority/deferral, Action isolation, inspection,
+  and restart-copy coverage.
 - `tests/test_entity.py` — Entity and registry unit tests.
 - `tests/test_task_action.py` — Task and Action unit tests.
 - `tests/test_scheduler_runtime.py` — Scheduler and Runtime unit tests.

@@ -276,12 +276,26 @@ mutation, autonomous forgetting, a vector database, or a transcript archive.
 Phase 8A's durable Signal format, Phase 8B's live Runtime recording controls,
 Phase 8C's one-Signal, sequential, and step replay, and Phase 8D's realtime,
 accelerated, immediate, manual, and cancellable timing are complete. Behavior
-work has not begun.
+policy work and Phase 8E Console replay controls are also complete.
+
+### Phase 8E — Console replay controls
+
+- Added host-local recording-path selection to Signal Inspector using the
+  existing replay API; no second browser-side storage model was introduced.
+- Added one-Signal replay from the selected Signal, sequential start/stop,
+  timing and acceleration controls, manual advance, session identity, and live
+  progress.
+- Replayed entries are visibly labeled in live/history lists and detail retains
+  the original recorded ID and timestamp.
+- Completed the Phase 8 character slice with JSON-safe typed intentions,
+  Core-owned behavior arbitration, explicit external-Action authorization,
+  interruptibility checks, and bounded low-priority curiosity goals. Policy
+  approval creates an Action intent but never executes or records it implicitly.
 
 ## Deferred
 
-Remaining runtime APIs, Console, concrete model providers,
-advanced autonomous memory, replay UI, Medulla transports, edge ML, robotics,
+Remaining runtime APIs, concrete model providers,
+advanced autonomous memory, Medulla transports, edge ML, robotics,
 and advanced task behavior remain deferred to the phases defined in the plan.
 
 ## Persistent character vertical track
@@ -298,7 +312,8 @@ and advanced task behavior remain deferred to the phases defined in the plan.
   completed in memory; durable persistence remains deferred.
 - Phase 7: compact, provider-neutral Character Context Builder and retrieval —
   completed; Phase 7E adds durable semantic and character-development memory.
-- Phase 8: proposed intentions, behavior arbitration, and autonomous curiosity.
+- Phase 8: typed intentions, behavior arbitration, interruptibility, and
+  low-priority curiosity goals — completed.
 - Phase 9: evidence-based, bounded, auditable character evolution.
 - Phase 10 and later: embodiment signals constrain state, goals, and behavior.
 

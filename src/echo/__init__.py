@@ -73,6 +73,17 @@ from echo.entity.audit import (
 )
 from echo.entity.identity import EntityIdentity
 from echo.entity.attention import AttentionCandidate, AttentionProposal
+from echo.entity.behavior import (
+    BehaviorContext,
+    BehaviorController,
+    BehaviorDecision,
+    BehaviorOutcome,
+    BehaviorPolicy,
+    CuriosityGoal,
+    CuriosityGoalStatus,
+    Intention,
+    IntentionType,
+)
 from echo.entity.context import (
     CharacterContext,
     CharacterContextBuilder,
@@ -309,6 +320,11 @@ __all__ = [
     "AttentionCandidate",
     "AttentionProposal",
     "BackpressurePolicy",
+    "BehaviorContext",
+    "BehaviorController",
+    "BehaviorDecision",
+    "BehaviorOutcome",
+    "BehaviorPolicy",
     "CharacterMutationAuditRecord",
     "CharacterMutationDecision",
     "CharacterMutationTarget",
@@ -341,6 +357,8 @@ __all__ = [
     "ConfigurationReloadUnavailableError",
     "ConfigurationValidationServiceError",
     "ConsoleConfig",
+    "CuriosityGoal",
+    "CuriosityGoalStatus",
     "DeveloperCommandDispatcher",
     "DeveloperCommandError",
     "DurableMemoryRecord",
@@ -373,6 +391,8 @@ __all__ = [
     "InvalidRequestError",
     "InvalidCharacterInfluenceError",
     "InternalState",
+    "Intention",
+    "IntentionType",
     "InferenceRequest",
     "InferenceResult",
     "InferenceRouteRecord",

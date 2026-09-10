@@ -10,6 +10,17 @@ from echo.entity.audit import (
     CharacterMutationTarget,
 )
 from echo.entity.attention import AttentionCandidate, AttentionProposal
+from echo.entity.behavior import (
+    BehaviorContext,
+    BehaviorController,
+    BehaviorDecision,
+    BehaviorOutcome,
+    BehaviorPolicy,
+    CuriosityGoal,
+    CuriosityGoalStatus,
+    Intention,
+    IntentionType,
+)
 from echo.entity.context import (
     CharacterContext,
     CharacterContextBuilder,
@@ -60,6 +71,13 @@ __all__ = [
     "CharacterContextRequest",
     "AttentionCandidate",
     "AttentionProposal",
+    "BehaviorContext",
+    "BehaviorController",
+    "BehaviorDecision",
+    "BehaviorOutcome",
+    "BehaviorPolicy",
+    "CuriosityGoal",
+    "CuriosityGoalStatus",
     "DriveProfile",
     "DurableMemoryRecord",
     "DurableMemoryStatus",
@@ -72,6 +90,8 @@ __all__ = [
     "MemoryConsolidationProposal",
     "MemoryImportance",
     "InternalState",
+    "Intention",
+    "IntentionType",
     "InMemoryStateStore",
     "InMemoryMemoryRepository",
     "MemoryKind",

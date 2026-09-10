@@ -14,6 +14,13 @@ from echo.core.scheduler import SignalPriority
 from echo.core.signal import Signal
 from echo.core.task import Task
 from echo.entity.attention import AttentionCandidate
+from echo.entity.behavior import (
+    BehaviorContext,
+    BehaviorController,
+    BehaviorDecision,
+    CuriosityGoalStatus,
+    Intention,
+)
 from echo.entity.drives import DriveProfile
 from echo.entity.identity import EntityIdentity
 from echo.entity.influence import SignalInfluence
@@ -69,6 +76,7 @@ class Entity:
         memory: CharacterMemory | None = None,
         memory_service: MemoryService | None = None,
         state_store: StateStore | None = None,
+        behavior: BehaviorController | None = None,
     ) -> None:
         if not entity_id:
             raise ValueError("entity id must not be empty")
@@ -105,6 +113,10 @@ class Entity:
             raise ValueError("memory_service must be a MemoryService")
         if memory_service is not None and memory_service.entity_id != entity_id:
             raise ValueError("memory_service entity_id must match Entity id")
+        if behavior is not None and not isinstance(behavior, BehaviorController):
+            raise TypeError("behavior must be a BehaviorController")
+        if behavior is not None and behavior.entity_id != entity_id:
+            raise ValueError("behavior entity_id must match Entity id")
         self._id = entity_id
         self._identity = identity
         self._traits = traits or TraitProfile()
@@ -130,6 +142,7 @@ class Entity:
         )
         self._memory = (memory or CharacterMemory()).copy()
         self._memory_service = memory_service or MemoryService(entity_id)
+        self._behavior = behavior or BehaviorController(entity_id)
         self._state_store = state_store or InMemoryStateStore()
         if not isinstance(self._state_store, StateStore):
             raise TypeError("state_store must implement StateStore")
@@ -206,6 +219,17 @@ class Entity:
     def memory_service(self) -> MemoryService:
         return self._memory_service
 
+    @property
+    def behavior(self) -> BehaviorController:
+        return self._behavior
+
+    def arbitrate_intention(
+        self, intention: Intention, context: BehaviorContext
+    ) -> BehaviorDecision:
+        """Evaluate untrusted proposed behavior without executing its Action."""
+
+        return self._behavior.arbitrate(intention, context)
+
     def get_state(
         self,
         key: str,
@@ -271,6 +295,7 @@ class Entity:
             memory=self._memory,
             memory_service=self._memory_service,
             state_store=self.state_store,
+            behavior=self._behavior.copy(),
         )
         copied._attention_candidates.extend(self._attention_candidates)
         return copied
@@ -379,6 +404,7 @@ class Entity:
                 record.to_dict() for record in self._memory_service.list()
             ],
             "memory_audit": self._memory.audit_to_dict(),
+            "behavior": self._behavior.to_dict(),
         }
 
     def _apply_signal_influence(
@@ -427,6 +453,16 @@ class Entity:
                 drive_contributions=contributions,
             )
             self._attention_candidates.append(candidate)
+            goal = self._behavior.consider_curiosity(
+                candidate,
+                active_noninterruptible_work=bool(self.active_tasks),
+            )
+            if (
+                goal is not None
+                and goal.status is CuriosityGoalStatus.ACTIVE
+                and goal.id not in self._self_model.active_goal_ids
+            ):
+                self._self_model.active_goal_ids.append(goal.id)
 
         state_after = self._internal_state.to_dict()
         drives_after = dict(self._drive_activations)

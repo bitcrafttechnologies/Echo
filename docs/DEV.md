@@ -582,8 +582,8 @@ Use the kernel directly when Echo runs inside your process. Use `RuntimeServiceP
 The current implementation intentionally does not provide:
 
 - Automatic execution of external Actions
-- Autonomous goal or intention generation
-- Web Console replay controls
+- Provider-originated autonomous intention generation
+- External execution of approved Action intents
 - Conversation-history persistence as a chat transcript
 - Automatic LAN provider discovery
 - Provider-owned identity or memory
