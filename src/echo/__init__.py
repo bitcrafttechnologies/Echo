@@ -33,6 +33,22 @@ from echo.core.action_history import ActionHistory, ActionHistoryEntry, ActionSt
 from echo.core.entity import Entity
 from echo.core.handlers import HandlerRegistry
 from echo.core.runtime import Runtime, RuntimeNotAcceptingWorkError
+from echo.core.recording import (
+    RECORDING_FORMAT,
+    RECORDING_FORMAT_VERSION,
+    JsonLinesSignalRecorder,
+    RecordedSession,
+    RecorderStateError,
+    RecordingFormatError,
+    RecordingSerializationError,
+    RuntimeLinkage,
+    SessionEndedRecord,
+    SessionStartedRecord,
+    SignalRecord,
+    SignalRecordingError,
+    decode_record,
+    read_recorded_session,
+)
 from echo.core.runtime_log import (
     InMemoryLogSink,
     LogSink,

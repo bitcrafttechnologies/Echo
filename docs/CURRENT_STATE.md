@@ -2,7 +2,7 @@
 
 ## Current implementation
 
-Echo through Phase 7D plus the `0.4-tui_core` interface track consists of a
+Echo through Phase 8A plus the `0.4-tui_core` interface track consists of a
 minimal, standard-library Python kernel, an optional FastAPI HTTP and WebSocket
 adapter, and a separate SvelteKit development console shell. The documented,
 transport-agnostic runtime
@@ -10,6 +10,21 @@ contract, structured developer commands, and live event subscriptions remain
 the only control boundary used by the transport and presentation layers. Phase
 3 character state, drives, Signal influence, and attention candidates, plus
 Phase 4 per-person relationship state, are implemented in memory.
+
+Phase 8A defines recording format version 1 as UTF-8 JSON Lines. A recording
+has a self-describing `session.started` line, zero or more Signal lines, and an
+optional `session.ended` line so an active or interrupted session remains
+readable through its last complete record. Signal records preserve ID, type,
+source, original timezone-aware timestamp, recording timestamp, payload, and
+metadata. Optional linkage retains Runtime, Entity, Task, and Action IDs
+without putting routing results into the Signal itself. The writer uses
+exclusive file creation, flushes every line, and synchronizes writes by
+default. The validator accepts only ordinary JSON values with finite numbers
+and string object keys; it rejects arbitrary Python objects rather than using
+pickle, type imports, hooks, or `repr` fallbacks. The reader validates session
+ordering, version, record types, IDs, timestamps, and final counts but never
+injects a Signal. Runtime integration, start/stop commands, replay, playback
+timing, and Console controls remain later Phase 8 work.
 
 Phase 7A introduces the small, runtime-checkable `StateStore` boundary between
 Entity state access and storage. Ordinary state is explicitly separated into
@@ -228,6 +243,9 @@ The public package exports:
 - secret-safe `ConfigurationInspectionResult`/`ConfigurationField` schemas and
   the validated `parse_config()` mapping entry point
 - `Signal`
+- recording format/version constants, `JsonLinesSignalRecorder`, typed session
+  and Signal records, `RuntimeLinkage`, `RecordedSession`, validation errors,
+  and the non-replaying record decoder/reader
 - `Entity`
 - `HandlerRegistry`
 - `Task` and `TaskStatus`
@@ -682,18 +700,26 @@ execution remains deferred to Medulla.
 - Successful chat exchanges enter bounded Entity-owned working memory and are
   available to later cognition requests in the same runtime generation. The
   character contract keeps raw configuration and context machinery private.
+- Phase 7E (`0.7.7`): Entity-scoped durable semantic and character-development
+  memory with typed provenance, Echo-owned commit policy, SQLite persistence,
+  bounded retrieval, and fresh-Runtime continuity coverage.
+- Phase 8 base branch (`0.8`) established from completed Phase 7E.
+- Phase 8A (`0.8.1`): versioned UTF-8 JSON Lines representation for Signal
+  recording sessions, safe JSON-only validation, durable incremental writes,
+  optional Runtime linkage IDs, and non-mutating format reads.
 
 ## In progress
 
-Nothing. Phase 7D and the Phase 7 character slice are complete. The Phase 1F
+Nothing. Phase 8A and the Phase 7 character slice are complete. The Phase 1F
 TUI integration requirement remains active across all later phases.
 
 ## Known issues
 
 - SQLite persists ordinary Entity state explicitly categorized as persistent;
   wiring a database path into the configured root host remains deferred.
-- Runtime histories and structured logs are in memory only.
-- Signal replay storage is not implemented.
+- Runtime histories and structured logs are in memory only. Phase 8A recordings
+  are explicit files and are not yet wired into Runtime lifecycle controls.
+- Signal replay and session playback are not implemented.
 - Actions have no Medulla executor or transport.
 - The root launcher provides a development process host; production service
   supervision, packaging, and deployment remain intentionally unspecified.
@@ -712,9 +738,11 @@ TUI integration requirement remains active across all later phases.
   durable character persistence, behavior policy, or durable character audit
   store.
 - Scheduler `periodic` is a priority class, not a recurring timer facility.
-- Signal payloads must already contain JSON-compatible values for `to_json`.
+- Signal payloads must already contain JSON-compatible values for `to_json`;
+  Phase 8A recording validates that constraint recursively and rejects unsafe
+  values explicitly.
 
-These are roadmap deferrals, not missing Phase 7D acceptance criteria.
+These are roadmap deferrals, not missing Phase 8A acceptance criteria.
 
 ## Architecture decisions
 
@@ -841,6 +869,14 @@ These are roadmap deferrals, not missing Phase 7D acceptance criteria.
   assembled by deterministic bounded retrieval. OpenAI-compatible adapters
   render the same canonical system message, while offline backends receive the
   same request contract.
+- Signal session recordings use a versioned, line-oriented, non-executable JSON
+  format. Every line is independently self-describing; session boundaries and
+  Signal capture are distinct record types, and causal Runtime IDs remain
+  optional linkage rather than mutable Signal data.
+- Recording refuses to overwrite an existing file and synchronizes complete
+  lines by default. A missing final session record represents an incomplete
+  session, while invalid ordering, versions, timestamps, or counts fail
+  explicitly. Reading a recording performs no replay or Runtime mutation.
 
 ## Phase 7E durable memory
 
@@ -866,9 +902,9 @@ These are roadmap deferrals, not missing Phase 7D acceptance criteria.
 
 ## Next task
 
-Stop after Phase 7E. Do not begin Phase 8, arbitrary Python hot replacement,
-general event/history storage, Signal replay, intentions, or behavior policy
-without separate authorization.
+Stop after Phase 8A. Do not begin Signal replay, automatic Runtime recording,
+session playback, CLI/Console recording controls, intentions, or behavior
+policy without separate authorization.
 
 ## Important files
 
@@ -886,6 +922,8 @@ without separate authorization.
   results.
 - `echo.example.toml` — secret-free complete configuration example.
 - `src/echo/core/signal.py` — Signal representation and serialization.
+- `src/echo/core/recording.py` — Phase 8A versioned session/Signal record
+  schemas, safe JSON validation, JSON Lines writer, and non-replaying reader.
 - `src/echo/core/entity.py` — Entity public abstraction.
 - `src/echo/entity/state_store.py` — StateStore protocol, state lifetime
   categories, in-memory implementation, and session compatibility view.
@@ -989,6 +1027,8 @@ without separate authorization.
 - `src/echo/core/inspection.py` — JSON-safe inspection conversion.
 - `src/echo/entity/audit.py` — character mutation audit vocabulary.
 - `tests/test_signal.py` — Signal unit tests.
+- `tests/test_phase8a_signal_recording.py` — Phase 8A format, durability,
+  lifecycle, safety rejection, partial-session, and compatibility coverage.
 - `tests/test_entity.py` — Entity and registry unit tests.
 - `tests/test_task_action.py` — Task and Action unit tests.
 - `tests/test_scheduler_runtime.py` — Scheduler and Runtime unit tests.
@@ -1017,6 +1057,8 @@ without separate authorization.
 - `docs/RUNTIME_API.md` — stable Phase 3 service, command, subscription, and
   response/error contract.
 - `docs/HTTP_API.md` — Phase 4A HTTP and Phase 4B WebSocket contracts.
+- `docs/SIGNAL_RECORDING.md` — Phase 8A JSON Lines schema, ordering, linkage,
+  validation, safety, and compatibility contract.
 - `examples/runtime_api_contract.py` — executable documented contract example.
 - `docs/ARCHITECTURE.md` — implemented architecture boundary.
 - `docs/CHARACTER_ARCHITECTURE.md` — persistent character design and phased
