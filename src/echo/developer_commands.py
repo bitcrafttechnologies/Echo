@@ -7,6 +7,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import StrEnum
 import json
+import math
 import shlex
 from typing import Any
 
@@ -25,7 +26,7 @@ from echo.runtime_service import (
     StartReplayRequest,
     TaskQuery,
 )
-from echo.runtime_replay import ReplayMode, ReplaySafetyPolicy
+from echo.runtime_replay import ReplayMode, ReplaySafetyPolicy, ReplayTiming
 
 
 class DeveloperCommandError(Exception):
@@ -92,6 +93,7 @@ class CommandName(StrEnum):
     REPLAY_SESSION = "replay.session"
     REPLAY_STEP = "replay.step"
     REPLAY_NEXT = "replay.next"
+    REPLAY_CANCEL = "replay.cancel"
     REPLAY_STATUS = "replay.status"
 
 
@@ -140,6 +142,8 @@ class ReplayStartCommand:
     path: str
     mode: ReplayMode
     signal_id: str | None = None
+    timing: ReplayTiming = ReplayTiming.IMMEDIATE
+    multiplier: float | None = None
     safety_policy: ReplaySafetyPolicy = ReplaySafetyPolicy.RECORD_ONLY
     name: CommandName = field(init=False)
 
@@ -152,10 +156,38 @@ class ReplayStartCommand:
             name = CommandName.REPLAY_SESSION
         elif self.mode is ReplayMode.STEP:
             name = CommandName.REPLAY_STEP
+            if self.timing not in {
+                ReplayTiming.IMMEDIATE,
+                ReplayTiming.MANUAL_STEP,
+            }:
+                raise CommandValidationError(
+                    "step replay cannot specify another timing mode"
+                )
+            object.__setattr__(self, "timing", ReplayTiming.MANUAL_STEP)
         else:
             raise CommandValidationError("unsupported replay mode")
         if self.safety_policy is not ReplaySafetyPolicy.RECORD_ONLY:
             raise CommandValidationError("unsupported replay safety policy")
+        if (
+            self.mode is ReplayMode.SIGNAL
+            and self.timing is not ReplayTiming.IMMEDIATE
+        ):
+            raise CommandValidationError("single-Signal replay uses immediate timing")
+        if self.timing is ReplayTiming.ACCELERATED:
+            if (
+                isinstance(self.multiplier, bool)
+                or not isinstance(self.multiplier, (int, float))
+                or not math.isfinite(float(self.multiplier))
+                or self.multiplier <= 0
+            ):
+                raise CommandValidationError(
+                    "accelerated replay multiplier must be finite and positive"
+                )
+            object.__setattr__(self, "multiplier", float(self.multiplier))
+        elif self.multiplier is not None:
+            raise CommandValidationError(
+                "multiplier is only valid for accelerated replay"
+            )
         object.__setattr__(self, "name", name)
 
 
@@ -163,6 +195,15 @@ class ReplayStartCommand:
 class ReplayNextCommand:
     replay_id: str
     name: CommandName = field(default=CommandName.REPLAY_NEXT, init=False)
+
+    def __post_init__(self) -> None:
+        _require_identifier(self.replay_id, "replay_id")
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
+class ReplayCancelCommand:
+    replay_id: str
+    name: CommandName = field(default=CommandName.REPLAY_CANCEL, init=False)
 
     def __post_init__(self) -> None:
         _require_identifier(self.replay_id, "replay_id")
@@ -340,6 +381,7 @@ DeveloperCommand = (
     | RecordingStatusCommand
     | ReplayStartCommand
     | ReplayNextCommand
+    | ReplayCancelCommand
     | ReplayStatusCommand
     | EntityInspectCommand
     | SignalListCommand
@@ -389,6 +431,7 @@ class DeveloperCommandDispatcher:
                 RecordingStatusCommand,
                 ReplayStartCommand,
                 ReplayNextCommand,
+                ReplayCancelCommand,
                 ReplayStatusCommand,
                 EntityInspectCommand,
                 SignalListCommand,
@@ -445,11 +488,15 @@ class DeveloperCommandDispatcher:
                     path=command.path,
                     mode=command.mode,
                     signal_id=command.signal_id,
+                    timing=command.timing,
+                    multiplier=command.multiplier,
                     safety_policy=command.safety_policy,
                 )
             )
         if isinstance(command, ReplayNextCommand):
             return await self._service.replay_next_step(command.replay_id)
+        if isinstance(command, ReplayCancelCommand):
+            return await self._service.cancel_replay(command.replay_id)
         if isinstance(command, ReplayStatusCommand):
             return self._service.get_replay_status(command.replay_id)
         if isinstance(command, EntityInspectCommand):
@@ -536,12 +583,37 @@ def parse_developer_command(text: str) -> DeveloperCommand:
         return ReplayStartCommand(
             path=tokens[2], mode=ReplayMode.SIGNAL, signal_id=tokens[3]
         )
-    if len(tokens) == 3 and tokens[:2] == ["replay", "session"]:
-        return ReplayStartCommand(path=tokens[2], mode=ReplayMode.SEQUENTIAL)
+    if len(tokens) in {3, 4} and tokens[:2] == ["replay", "session"]:
+        try:
+            timing = (
+                ReplayTiming(tokens[3])
+                if len(tokens) == 4
+                else ReplayTiming.IMMEDIATE
+            )
+        except ValueError as error:
+            raise CommandParseError("unsupported replay timing mode") from error
+        return ReplayStartCommand(
+            path=tokens[2], mode=ReplayMode.SEQUENTIAL, timing=timing
+        )
+    if len(tokens) == 5 and tokens[:2] == ["replay", "session"]:
+        if tokens[3] != ReplayTiming.ACCELERATED.value:
+            raise CommandParseError("only accelerated replay accepts a multiplier")
+        try:
+            multiplier = float(tokens[4])
+        except ValueError as error:
+            raise CommandParseError("replay multiplier must be a number") from error
+        return ReplayStartCommand(
+            path=tokens[2],
+            mode=ReplayMode.SEQUENTIAL,
+            timing=ReplayTiming.ACCELERATED,
+            multiplier=multiplier,
+        )
     if len(tokens) == 3 and tokens[:2] == ["replay", "step"]:
         return ReplayStartCommand(path=tokens[2], mode=ReplayMode.STEP)
     if len(tokens) == 3 and tokens[:2] == ["replay", "next"]:
         return ReplayNextCommand(replay_id=tokens[2])
+    if len(tokens) == 3 and tokens[:2] == ["replay", "cancel"]:
+        return ReplayCancelCommand(replay_id=tokens[2])
     if len(tokens) == 3 and tokens[:2] == ["replay", "status"]:
         return ReplayStatusCommand(replay_id=tokens[2])
     if tokens == ["signal", "list"]:

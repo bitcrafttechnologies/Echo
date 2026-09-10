@@ -1,11 +1,13 @@
-"""Safe replay of recorded Signals through the normal Runtime entry path."""
+"""Safe, cancellable replay of recorded Signals through Runtime.emit()."""
 
 from __future__ import annotations
 
+import asyncio
 from copy import deepcopy
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from enum import StrEnum
+import math
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -24,19 +26,24 @@ def _utc_now() -> datetime:
 
 
 class ReplayMode(StrEnum):
-    """Supported replay execution modes."""
+    """Recorded Signal selection mode retained from Phase 8C."""
 
     SIGNAL = "signal"
     SEQUENTIAL = "sequential"
-    STEP = "step"
+    STEP = "step"  # Compatibility alias for a manual sequential replay.
+
+
+class ReplayTiming(StrEnum):
+    """Timing applied between selected recorded Signals."""
+
+    REALTIME = "realtime"
+    ACCELERATED = "accelerated"
+    IMMEDIATE = "immediate"
+    MANUAL_STEP = "manual_step"
 
 
 class ReplaySafetyPolicy(StrEnum):
-    """Action safety policy applied while replayed Signals are dispatched.
-
-    Phase 8C intentionally exposes only the safe policy. Runtime handlers may
-    produce Action intents, but replay never invokes an external Action executor.
-    """
+    """Action safety policy applied while replayed Signals are dispatched."""
 
     RECORD_ONLY = "record_only"
 
@@ -45,6 +52,7 @@ class ReplayState(StrEnum):
     READY = "ready"
     RUNNING = "running"
     COMPLETED = "completed"
+    CANCELLED = "cancelled"
     FAILED = "failed"
 
 
@@ -53,7 +61,7 @@ class ReplayError(RuntimeError):
 
 
 class ReplayStateError(ReplayError):
-    """A replay operation is invalid for the current state or mode."""
+    """A replay operation is invalid for the current state or timing mode."""
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
@@ -79,12 +87,15 @@ class ReplayStatus:
     recording_path: str
     recording_session_id: str
     mode: ReplayMode
+    timing: ReplayTiming
+    multiplier: float | None
     safety_policy: ReplaySafetyPolicy
     state: ReplayState
     total_signals: int
     next_index: int = 0
     started_at: datetime | None = None
     completed_at: datetime | None = None
+    cancellation_requested: bool = False
     replayed_signals: tuple[ReplayedSignal, ...] = ()
     error: dict[str, str] | None = None
 
@@ -99,6 +110,8 @@ class ReplayStatus:
             "recording_path": self.recording_path,
             "recording_session_id": self.recording_session_id,
             "mode": self.mode.value,
+            "timing": self.timing.value,
+            "multiplier": self.multiplier,
             "safety_policy": self.safety_policy.value,
             "state": self.state.value,
             "total_signals": self.total_signals,
@@ -108,6 +121,7 @@ class ReplayStatus:
             "completed_at": (
                 self.completed_at.isoformat() if self.completed_at else None
             ),
+            "cancellation_requested": self.cancellation_requested,
             "replayed_signals": [item.to_dict() for item in self.replayed_signals],
             "error": deepcopy(self.error),
         }
@@ -124,12 +138,38 @@ class RuntimeSignalReplay:
         *,
         mode: ReplayMode,
         signal_id: str | None = None,
+        timing: ReplayTiming = ReplayTiming.IMMEDIATE,
+        multiplier: float | None = None,
         safety_policy: ReplaySafetyPolicy = ReplaySafetyPolicy.RECORD_ONLY,
     ) -> None:
         if not isinstance(runtime, Runtime):
             raise TypeError("runtime must be a Runtime")
         if safety_policy is not ReplaySafetyPolicy.RECORD_ONLY:
             raise ValueError("unsupported replay safety policy")
+        if mode is ReplayMode.STEP:
+            mode = ReplayMode.SEQUENTIAL
+            if timing not in {
+                ReplayTiming.IMMEDIATE,
+                ReplayTiming.MANUAL_STEP,
+            }:
+                raise ValueError("legacy step mode cannot specify another timing mode")
+            timing = ReplayTiming.MANUAL_STEP
+        if mode is ReplayMode.SIGNAL and timing is not ReplayTiming.IMMEDIATE:
+            raise ValueError("single-Signal replay uses immediate timing")
+        if timing is ReplayTiming.ACCELERATED:
+            if (
+                isinstance(multiplier, bool)
+                or not isinstance(multiplier, (int, float))
+                or not math.isfinite(float(multiplier))
+                or multiplier <= 0
+            ):
+                raise ValueError(
+                    "accelerated replay multiplier must be finite and positive"
+                )
+            multiplier = float(multiplier)
+        elif multiplier is not None:
+            raise ValueError("multiplier is only valid for accelerated replay")
+
         records = session.signals
         if mode is ReplayMode.SIGNAL:
             if not signal_id:
@@ -145,15 +185,25 @@ class RuntimeSignalReplay:
         elif signal_id is not None:
             raise ValueError("signal_id is only valid for signal replay")
 
+        if timing in {ReplayTiming.REALTIME, ReplayTiming.ACCELERATED}:
+            for previous, current in zip(records, records[1:]):
+                if current.timestamp < previous.timestamp:
+                    raise ValueError(
+                        "timed replay requires non-decreasing Signal timestamps"
+                    )
+
         self._runtime = runtime
-        self._session = session
         self._records: tuple[SignalRecord, ...] = records
+        self._cancel_event = asyncio.Event()
+        self._timeline_anchor: float | None = None
         self._status = ReplayStatus(
             replay_id=str(uuid4()),
             runtime_id=runtime.id,
             recording_path=str(Path(recording_path)),
             recording_session_id=session.start.session_id,
             mode=mode,
+            timing=timing,
+            multiplier=multiplier,
             safety_policy=safety_policy,
             state=ReplayState.READY,
             total_signals=len(records),
@@ -167,6 +217,8 @@ class RuntimeSignalReplay:
         *,
         mode: ReplayMode,
         signal_id: str | None = None,
+        timing: ReplayTiming = ReplayTiming.IMMEDIATE,
+        multiplier: float | None = None,
         safety_policy: ReplaySafetyPolicy = ReplaySafetyPolicy.RECORD_ONLY,
     ) -> RuntimeSignalReplay:
         return cls(
@@ -175,6 +227,8 @@ class RuntimeSignalReplay:
             read_recorded_session(recording_path),
             mode=mode,
             signal_id=signal_id,
+            timing=timing,
+            multiplier=multiplier,
             safety_policy=safety_policy,
         )
 
@@ -183,38 +237,90 @@ class RuntimeSignalReplay:
         return self._status
 
     async def run(self) -> ReplayStatus:
-        """Run a one-Signal or sequential replay to completion."""
+        """Run an automatic replay, honoring its relative timing policy."""
 
-        if self._status.mode is ReplayMode.STEP:
-            raise ReplayStateError("step replay must be advanced with step()")
+        if self._status.timing is ReplayTiming.MANUAL_STEP:
+            raise ReplayStateError("manual replay must be advanced with step()")
         self._require_ready()
         if not self._records:
             self._complete()
             return self._status
+        self._timeline_anchor = asyncio.get_running_loop().time()
         while self._status.next_index < len(self._records):
+            if self._cancel_event.is_set():
+                self._cancel()
+                break
+            if not await self._wait_for_next_signal():
+                self._cancel()
+                break
             await self._emit_next()
         return self._status
 
     async def step(self) -> ReplayStatus:
-        """Inject exactly one remaining Signal for a step replay."""
+        """Inject exactly one remaining Signal for a manual replay."""
 
-        if self._status.mode is not ReplayMode.STEP:
+        if self._status.timing is not ReplayTiming.MANUAL_STEP:
             raise ReplayStateError(
-                "only step replay can be advanced one Signal at a time"
+                "only manual replay can be advanced one Signal at a time"
             )
-        if self._status.state is ReplayState.COMPLETED:
-            raise ReplayStateError("replay is already complete")
-        if self._status.state is ReplayState.FAILED:
-            raise ReplayStateError("replay has failed")
+        self._require_active()
+        if self._cancel_event.is_set():
+            self._cancel()
+            return self._status
         if not self._records:
             self._complete()
             return self._status
         await self._emit_next()
         return self._status
 
+    def request_cancel(self) -> ReplayStatus:
+        """Request cooperative cancellation at the next safe dispatch boundary."""
+
+        if self._status.state in {
+            ReplayState.COMPLETED,
+            ReplayState.CANCELLED,
+            ReplayState.FAILED,
+        }:
+            raise ReplayStateError("replay is already terminal")
+        self._cancel_event.set()
+        self._status = replace(self._status, cancellation_requested=True)
+        if (
+            self._status.state is ReplayState.READY
+            or self._status.timing is ReplayTiming.MANUAL_STEP
+        ):
+            self._cancel()
+        return self._status
+
     def _require_ready(self) -> None:
         if self._status.state is not ReplayState.READY:
             raise ReplayStateError("replay has already started")
+
+    def _require_active(self) -> None:
+        if self._status.state is ReplayState.COMPLETED:
+            raise ReplayStateError("replay is already complete")
+        if self._status.state is ReplayState.CANCELLED:
+            raise ReplayStateError("replay is cancelled")
+        if self._status.state is ReplayState.FAILED:
+            raise ReplayStateError("replay has failed")
+
+    async def _wait_for_next_signal(self) -> bool:
+        index = self._status.next_index
+        if index == 0 or self._status.timing is ReplayTiming.IMMEDIATE:
+            return not self._cancel_event.is_set()
+        first = self._records[0].timestamp
+        current = self._records[index].timestamp
+        recorded_offset = (current - first).total_seconds()
+        divisor = self._status.multiplier or 1.0
+        assert self._timeline_anchor is not None
+        deadline = self._timeline_anchor + recorded_offset / divisor
+        delay = deadline - asyncio.get_running_loop().time()
+        if delay <= 0:
+            return not self._cancel_event.is_set()
+        try:
+            await asyncio.wait_for(self._cancel_event.wait(), timeout=delay)
+        except TimeoutError:
+            return True
+        return False
 
     async def _emit_next(self) -> None:
         index = self._status.next_index
@@ -234,6 +340,8 @@ class RuntimeSignalReplay:
                     "original_signal_id": record.signal_id,
                     "original_timestamp": record.timestamp.isoformat(),
                     "recorded_at": record.recorded_at.isoformat(),
+                    "timing": self._status.timing.value,
+                    "multiplier": self._status.multiplier,
                     "safety_policy": self._status.safety_policy.value,
                 },
             },
@@ -244,7 +352,6 @@ class RuntimeSignalReplay:
             started_at=self._status.started_at or received_at,
         )
         try:
-            # This is deliberately the same entry path used for live Signals.
             await self._runtime.emit(signal, priority=SignalPriority.NORMAL)
         except BaseException as error:
             if isinstance(error, (KeyboardInterrupt, SystemExit)):
@@ -282,4 +389,12 @@ class RuntimeSignalReplay:
             state=ReplayState.COMPLETED,
             started_at=self._status.started_at or now,
             completed_at=now,
+        )
+
+    def _cancel(self) -> None:
+        self._status = replace(
+            self._status,
+            state=ReplayState.CANCELLED,
+            completed_at=_utc_now(),
+            cancellation_requested=True,
         )

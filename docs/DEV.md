@@ -356,6 +356,7 @@ Common endpoints include:
 | `DELETE` | `/runtime/recording` | Stop recording after draining writes |
 | `POST` | `/runtime/replays` | Start one, sequential, or step Signal replay |
 | `POST` | `/runtime/replays/{id}/step` | Advance a step replay by one Signal |
+| `DELETE` | `/runtime/replays/{id}` | Cancel replay before its next Signal |
 | `GET` | `/runtime/replays/{id}` | Inspect replay progress and safety policy |
 | `GET` | `/entities` | List entities |
 | `GET` | `/entities/{id}` | Inspect an entity |
@@ -404,9 +405,12 @@ safety policy and never invokes external Action execution:
 
 ```console
 echoc replay signal .echo/development-session.jsonl <signal-id>
-echoc replay session .echo/development-session.jsonl
+echoc replay session .echo/development-session.jsonl realtime
+echoc replay session .echo/development-session.jsonl accelerated 4
+echoc replay session .echo/development-session.jsonl immediate
 echoc replay step .echo/development-session.jsonl
 echoc replay next <replay-id>
+echoc replay cancel <replay-id>
 echoc replay status <replay-id>
 ```
 
@@ -579,7 +583,7 @@ The current implementation intentionally does not provide:
 
 - Automatic execution of external Actions
 - Autonomous goal or intention generation
-- Signal replay
+- Web Console replay controls
 - Conversation-history persistence as a chat transcript
 - Automatic LAN provider discovery
 - Provider-owned identity or memory

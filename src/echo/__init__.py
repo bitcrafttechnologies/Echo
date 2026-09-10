@@ -145,6 +145,7 @@ from echo.developer_commands import (
     RecordingStartCommand,
     RecordingStatusCommand,
     RecordingStopCommand,
+    ReplayCancelCommand,
     ReplayNextCommand,
     ReplayStartCommand,
     ReplayStatusCommand,
@@ -213,6 +214,7 @@ from echo.runtime_replay import (
     ReplayState,
     ReplayStateError,
     ReplayStatus,
+    ReplayTiming,
     RuntimeSignalReplay,
 )
 from echo.runtime_events import (
@@ -454,6 +456,7 @@ __all__ = [
     "PreferenceMemory",
     "REPLAY_METADATA_KEY",
     "ReplayConflictError",
+    "ReplayCancelCommand",
     "ReplayError",
     "ReplayMode",
     "ReplayNextCommand",
@@ -465,6 +468,7 @@ __all__ = [
     "ReplayStateError",
     "ReplayStatus",
     "ReplayStatusCommand",
+    "ReplayTiming",
     "ResourceNotFoundError",
     "RestartConflictError",
     "RestartError",

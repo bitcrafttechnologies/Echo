@@ -72,9 +72,10 @@ the mapping is outside this contract and must not leak back into Echo Core.
 | `start_recording(request)` | `StartRecordingRequest` | `RecordingStatus` | Creates a versioned session file and starts non-blocking Signal capture. |
 | `stop_recording()` | none | `RecordingStatus` | Detaches capture, drains queued writes, and closes the session. |
 | `get_recording_status()` | none | `RecordingStatus` | State, path, session metadata, counts, and latest recording error. |
-| `start_replay(request)` | `StartReplayRequest` | `ReplayStatus` | Runs one Signal/session immediately or creates a step replay; policy is `record_only`. |
+| `start_replay(request)` | `StartReplayRequest` | `ReplayStatus` | Starts immediate, realtime, accelerated, or manual replay; policy is `record_only`. |
 | `replay_next_step(replay_id)` | replay ID | `ReplayStatus` | Emits exactly one remaining Signal through `Runtime.emit()`. |
-| `get_replay_status(replay_id)` | replay ID | `ReplayStatus` | Progress, original/replayed IDs, timestamps, mode, policy, and error. |
+| `cancel_replay(replay_id)` | replay ID | `ReplayStatus` | Cooperatively cancels before the next Signal without interrupting a handler. |
+| `get_replay_status(replay_id)` | replay ID | `ReplayStatus` | Timing, multiplier, progress, cancellation, IDs, timestamps, policy, and error. |
 | `request_restart(request)` | `RestartRequest` | `RestartOperationResult` | Requires exact confirmation and state preservation; starts tracked work. |
 | `get_restart_operation(operation_id)` | ID | `RestartOperationResult` | Current restart phase and old/new Runtime IDs. |
 | `get_entities()` | none | `tuple[EntityResult, ...]` | Detached Entity views. |
@@ -160,6 +161,7 @@ runtime service contract.
 | `replay.session` | `ReplayStartCommand` | `start_replay` |
 | `replay.step` | `ReplayStartCommand` | `start_replay` |
 | `replay.next` | `ReplayNextCommand` | `replay_next_step` |
+| `replay.cancel` | `ReplayCancelCommand` | `cancel_replay` |
 | `replay.status` | `ReplayStatusCommand` | `get_replay_status` |
 | `entity.inspect` | `EntityInspectCommand` | `inspect_entity` |
 | `signal.list` | `SignalListCommand` | `get_recent_signals` |
@@ -190,9 +192,11 @@ record start <output-path> ['<metadata-json-object>']
 record stop
 record status
 replay signal <recording-path> <recorded-signal-id>
-replay session <recording-path>
+replay session <recording-path> [immediate|realtime|manual_step]
+replay session <recording-path> accelerated <multiplier>
 replay step <recording-path>
 replay next <replay-id>
+replay cancel <replay-id>
 replay status <replay-id>
 entity inspect <entity-id>
 signal list

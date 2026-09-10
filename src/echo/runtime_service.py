@@ -63,6 +63,7 @@ from echo.runtime_replay import (
     ReplayState,
     ReplayStateError,
     ReplayStatus,
+    ReplayTiming,
     RuntimeSignalReplay,
 )
 
@@ -209,6 +210,8 @@ class StartReplayRequest:
     path: str
     mode: ReplayMode | str
     signal_id: str | None = None
+    timing: ReplayTiming | str = ReplayTiming.IMMEDIATE
+    multiplier: float | None = None
     safety_policy: ReplaySafetyPolicy | str = ReplaySafetyPolicy.RECORD_ONLY
 
 
@@ -429,6 +432,8 @@ class RuntimeServiceProtocol(Protocol):
 
     async def replay_next_step(self, replay_id: str) -> ReplayStatus: ...
 
+    async def cancel_replay(self, replay_id: str) -> ReplayStatus: ...
+
     def get_replay_status(self, replay_id: str) -> ReplayStatus: ...
 
     async def request_restart(
@@ -613,6 +618,7 @@ class RuntimeService:
         self._recording_lock = asyncio.Lock()
         self._recording_queue_capacity = recording_queue_capacity
         self._replay: RuntimeSignalReplay | None = None
+        self._replay_task: asyncio.Task[None] | None = None
         self._replay_lock = asyncio.Lock()
         self._event_subscriptions: dict[str, RuntimeEventSubscription] = {}
         try:
@@ -856,6 +862,12 @@ class RuntimeService:
             raise InvalidRequestError(
                 "unsupported replay safety policy; use record_only"
             ) from error
+        try:
+            timing = ReplayTiming(request.timing)
+        except (TypeError, ValueError) as error:
+            raise InvalidRequestError(
+                "replay timing must be realtime, accelerated, immediate, or manual_step"
+            ) from error
         if mode is ReplayMode.SIGNAL:
             if not isinstance(request.signal_id, str) or not request.signal_id.strip():
                 raise InvalidRequestError(
@@ -885,6 +897,8 @@ class RuntimeService:
                     request.path.strip(),
                     mode=mode,
                     signal_id=signal_id,
+                    timing=timing,
+                    multiplier=request.multiplier,
                     safety_policy=safety_policy,
                 )
             except (OSError, SignalRecordingError, TypeError, ValueError) as error:
@@ -893,8 +907,19 @@ class RuntimeService:
                     details={"reason": str(error), "path": request.path.strip()},
                 ) from error
             self._replay = replay
+            self._replay_task = None
 
-        if mode is ReplayMode.STEP:
+        if replay.status.timing is ReplayTiming.MANUAL_STEP:
+            return replay.status
+        if replay.status.timing in {
+            ReplayTiming.REALTIME,
+            ReplayTiming.ACCELERATED,
+        }:
+            self._replay_task = asyncio.create_task(
+                self._run_replay_background(replay),
+                name=f"echo-replay-{replay.status.replay_id}",
+            )
+            await asyncio.sleep(0)
             return replay.status
         try:
             return await replay.run()
@@ -907,6 +932,15 @@ class RuntimeService:
                 "Signal replay failed",
                 details={"replay": replay.status.to_dict()},
             ) from error
+
+    async def _run_replay_background(self, replay: RuntimeSignalReplay) -> None:
+        try:
+            await replay.run()
+        except (KeyboardInterrupt, SystemExit, asyncio.CancelledError):
+            raise
+        except Exception:
+            # RuntimeSignalReplay has already stored and reported the failure.
+            return
 
     async def replay_next_step(self, replay_id: str) -> ReplayStatus:
         self._validate_identifier(replay_id, "replay_id")
@@ -931,6 +965,25 @@ class RuntimeService:
                     "Signal replay step failed",
                     details={"replay": replay.status.to_dict()},
                 ) from error
+
+    async def cancel_replay(self, replay_id: str) -> ReplayStatus:
+        self._validate_identifier(replay_id, "replay_id")
+        async with self._replay_lock:
+            replay = self._replay
+            if replay is None or replay.status.replay_id != replay_id:
+                raise ResourceNotFoundError(
+                    "replay not found", details={"replay_id": replay_id}
+                )
+            try:
+                replay.request_cancel()
+            except ReplayStateError as error:
+                raise ReplayConflictError(
+                    str(error), details={"replay": replay.status.to_dict()}
+                ) from error
+            task = self._replay_task
+        if task is not None and not task.done():
+            await task
+        return replay.status
 
     def get_replay_status(self, replay_id: str) -> ReplayStatus:
         self._validate_identifier(replay_id, "replay_id")

@@ -1,7 +1,7 @@
 # Signal Recording Format
 
 Phase 8A defines recording format version 1. Phase 8B records live sessions,
-and Phase 8C replays their Signals. Real-time/original-delay playback and web
+Phase 8C replays their Signals, and Phase 8D controls replay timing. Web
 Console controls remain outside this format.
 
 ## Container
@@ -122,6 +122,8 @@ then reserves `metadata.echo_replay` for this marker:
   "original_signal_id": "signal-1",
   "original_timestamp": "2026-09-09T12:00:01+00:00",
   "recorded_at": "2026-09-09T12:00:02+00:00",
+  "timing": "realtime",
+  "multiplier": null,
   "safety_policy": "record_only"
 }
 ```
@@ -137,15 +139,31 @@ replay does not call an external Action executor. A future policy that permits
 external effects must be added and selected explicitly; none exists in this
 phase.
 
-Service operations are `start_replay`, `replay_next_step`, and
+Phase 8D timing is independent of Signal selection. `immediate` adds no delay,
+`realtime` retains each Signal's recorded offset from the first Signal,
+`accelerated` divides each offset by a required finite positive multiplier,
+and `manual_step` emits only on explicit advance. Realtime and accelerated
+deadlines use a monotonic clock anchored once at replay start, so system-clock
+changes and cumulative per-sleep drift do not alter the intended timeline.
+Timed input must have non-decreasing Signal timestamps.
+
+Automatic timed sessions run in the background. Cancellation wakes a pending
+delay and stops before the next Signal; if a handler is already running, it is
+allowed to finish so Runtime dispatch is never torn down mid-Signal. Status
+reports timing, multiplier, progress, cancellation request, terminal state,
+and the original-to-runtime Signal mapping.
+
+Service operations are `start_replay`, `replay_next_step`, `cancel_replay`, and
 `get_replay_status`. HTTP uses `POST /runtime/replays`,
-`POST /runtime/replays/{id}/step`, and `GET /runtime/replays/{id}`. The matching
-one-shot commands are:
+`POST /runtime/replays/{id}/step`, `DELETE /runtime/replays/{id}`, and
+`GET /runtime/replays/{id}`. The matching one-shot commands are:
 
 ```text
 echoc replay signal <recording-path> <recorded-signal-id>
-echoc replay session <recording-path>
+echoc replay session <recording-path> [immediate|realtime|manual_step]
+echoc replay session <recording-path> accelerated <multiplier>
 echoc replay step <recording-path>
 echoc replay next <replay-id>
+echoc replay cancel <replay-id>
 echoc replay status <replay-id>
 ```

@@ -274,14 +274,15 @@ Context work already completed in Phases 5–7.
 Phase 7E does not add intentions, behavior policy, reflection-driven trait
 mutation, autonomous forgetting, a vector database, or a transcript archive.
 Phase 8A's durable Signal format, Phase 8B's live Runtime recording controls,
-and Phase 8C's one-Signal, sequential, and step replay are complete. Replay
-timing and behavior work have not begun.
+Phase 8C's one-Signal, sequential, and step replay, and Phase 8D's realtime,
+accelerated, immediate, manual, and cancellable timing are complete. Behavior
+work has not begun.
 
 ## Deferred
 
 Remaining runtime APIs, Console, concrete model providers,
-advanced autonomous memory, replay timing, Medulla transports, edge ML, robotics, and
-advanced task behavior remain deferred to the phases defined in the plan.
+advanced autonomous memory, replay UI, Medulla transports, edge ML, robotics,
+and advanced task behavior remain deferred to the phases defined in the plan.
 
 ## Persistent character vertical track
 

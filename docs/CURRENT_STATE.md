@@ -2,7 +2,7 @@
 
 ## Current implementation
 
-Echo through Phase 8C plus the `0.4-tui_core` interface track consists of a
+Echo through Phase 8D plus the `0.4-tui_core` interface track consists of a
 minimal, standard-library Python kernel, an optional FastAPI HTTP and WebSocket
 adapter, and a separate SvelteKit development console shell. The documented,
 transport-agnostic runtime
@@ -50,8 +50,20 @@ the active safety policy. Status exposes mode, progress, lifecycle, the
 original-to-new ID mapping, timestamps, and failures through Runtime service,
 HTTP, structured commands, and one-shot `echoc`. Only the explicit
 `record_only` safety policy exists: normal handlers and Action intent history
-still run, but replay never calls an external Action executor. Original-delay
-timing and web Console replay controls remain deferred.
+still run, but replay never calls an external Action executor.
+
+Phase 8D adds explicit replay timing independent of Signal selection.
+`immediate` dispatches without added delay; `realtime` preserves recorded
+timestamp offsets at 1×; `accelerated` divides those offsets by a finite,
+positive multiplier; and `manual_step` waits for each developer advance.
+Realtime and accelerated sessions run in a background Task so progress and
+cancellation remain accessible during waits. Deadlines use the event loop's
+monotonic clock and are anchored to the first Signal, avoiding wall-clock
+changes and cumulative drift. Cancellation wakes pending waits and settles at
+a safe Signal boundary without cancelling an active handler. Replay status now
+includes timing, multiplier, cancellation request/terminal state, remaining
+Signals, and original-to-runtime Signal mappings. Web Console replay controls
+remain deferred.
 
 Phase 7A introduces the small, runtime-checkable `StateStore` boundary between
 Entity state access and storage. Ordinary state is explicitly separated into
@@ -276,8 +288,9 @@ The public package exports:
 - `RuntimeSessionRecorder`, `RecordingState`, `RecordingStatus`,
   `StartRecordingRequest`, recording service errors, and recording developer
   command schemas
-- `RuntimeSignalReplay`, replay mode/state/status and safety policy schemas,
-  `StartReplayRequest`, replay service errors, and replay command schemas
+- `RuntimeSignalReplay`, replay selection/timing/state/status and safety policy
+  schemas, `StartReplayRequest`, replay service errors, cancellation, and
+  replay command schemas
 - `Entity`
 - `HandlerRegistry`
 - `Task` and `TaskStatus`
@@ -745,10 +758,13 @@ execution remains deferred to Medulla.
 - Phase 8C (`0.8.3`): one-Signal, sequential, and step-by-step replay through
   normal Runtime emission, preserved origin metadata, fresh receipt identity
   and time, inspectable progress, and an explicit record-only Action policy.
+- Phase 8D (`0.8.4`): realtime, accelerated, immediate, and manual-step replay
+  timing with monotonic relative scheduling, validated multipliers,
+  cancellation, and expanded status/API/HTTP/CLI controls.
 
 ## In progress
 
-Nothing. Phase 8C and the Phase 7 character slice are complete. The Phase 1F
+Nothing. Phase 8D and the Phase 7 character slice are complete. The Phase 1F
 TUI integration requirement remains active across all later phases.
 
 ## Known issues
@@ -757,8 +773,8 @@ TUI integration requirement remains active across all later phases.
   wiring a database path into the configured root host remains deferred.
 - Runtime histories and structured logs remain bounded in memory; Phase 8B can
   explicitly record live Signal sessions but does not archive general logs.
-- Original-delay, accelerated, and real-time replay timing are not implemented;
-  Phase 8C sequential replay intentionally dispatches as fast as handlers allow.
+- Timed replay does not catch up by overlapping Signal dispatch when a handler
+  takes longer than a scheduled offset; normal Runtime ordering remains serial.
 - Replay has no web Console surface; Runtime API, HTTP, and `echoc` controls are
   available.
 - Actions have no Medulla executor or transport.
@@ -783,7 +799,7 @@ TUI integration requirement remains active across all later phases.
   Phase 8A recording validates that constraint recursively and rejects unsafe
   values explicitly.
 
-These are roadmap deferrals, not missing Phase 8C acceptance criteria.
+These are roadmap deferrals, not missing Phase 8D acceptance criteria.
 
 ## Architecture decisions
 
@@ -978,8 +994,9 @@ These are roadmap deferrals, not missing Phase 8C acceptance criteria.
 
 - `RuntimeSignalReplay` loads only the validated Phase 8A representation and
   selects either one recorded ID or all Signal records in file order.
-- One-Signal and sequential modes finish in the start operation. Step mode
-  starts `ready` and each explicit advance dispatches exactly one Signal.
+- Phase 8C's original one-Signal and immediate sequential modes finish in the
+  start operation. Manual mode starts `ready` and each explicit advance
+  dispatches exactly one Signal; Phase 8D adds background timed sessions.
 - Each replayed Signal has a fresh ID/current timestamp and a runtime-owned
   `echo_replay` metadata marker containing original ID/time, record time,
   session/replay IDs, and `record_only` policy.
@@ -989,11 +1006,30 @@ These are roadmap deferrals, not missing Phase 8C acceptance criteria.
 - Handler failures mark replay failed, remain visible in normal Signal/Task
   history and Runtime error logs, and do not kill Echo.
 
+## Phase 8D replay timing
+
+- `ReplayTiming` separates `realtime`, `accelerated`, `immediate`, and
+  `manual_step` scheduling from one-Signal versus sequential selection.
+- Realtime and accelerated deadlines preserve offsets from the first recorded
+  Signal using the monotonic event-loop clock. Acceleration divides every
+  offset by the required finite positive multiplier, avoiding cumulative sleep
+  drift.
+- Timed sessions start in a background Task. Immediate replay retains the
+  Phase 8C synchronous completion behavior, while manual replay advances only
+  through `replay_next_step`.
+- Cooperative cancellation wakes a pending timed wait immediately and never
+  cancels a handler mid-dispatch. Status reports `cancelled`, completed time,
+  cancellation request, next index, and remaining count.
+- Runtime service and HTTP add `cancel_replay` and
+  `DELETE /runtime/replays/{id}`. Developer/`echoc` commands add
+  `replay cancel`; `replay session` accepts realtime, accelerated multiplier,
+  immediate, or manual-step timing.
+
 ## Next task
 
-Stop after Phase 8C. Do not begin replay timing, web Console replay controls,
-external Action execution policy, intentions, or behavior arbitration without
-separate authorization.
+Stop after Phase 8D. Do not begin web Console replay controls, external Action
+execution policy, intentions, or behavior arbitration without separate
+authorization.
 
 ## Important files
 
@@ -1015,8 +1051,9 @@ separate authorization.
   schemas, safe JSON validation, JSON Lines writer, and non-replaying reader.
 - `src/echo/runtime_recording.py` — Phase 8B bounded asynchronous live capture,
   lifecycle state/status, worker-thread writes, and recoverable failure path.
-- `src/echo/runtime_replay.py` — Phase 8C normal-path Signal reconstruction,
-  sequential/step control, origin metadata, progress, and safety policy.
+- `src/echo/runtime_replay.py` — Phase 8C/8D normal-path Signal reconstruction,
+  monotonic timing, cooperative cancellation, origin metadata, progress, and
+  safety policy.
 - `src/echo/core/entity.py` — Entity public abstraction.
 - `src/echo/entity/state_store.py` — StateStore protocol, state lifetime
   categories, in-memory implementation, and session compatibility view.
@@ -1127,6 +1164,8 @@ separate authorization.
   CLI coverage.
 - `tests/test_phase8c_signal_replay.py` — one-Signal, ordered, step, origin
   metadata, Action safety, developer-command, and HTTP replay coverage.
+- `tests/test_phase8d_replay_timing.py` — relative timing, acceleration,
+  immediate/manual modes, cancellation, status, command, and HTTP coverage.
 - `tests/test_entity.py` — Entity and registry unit tests.
 - `tests/test_task_action.py` — Task and Action unit tests.
 - `tests/test_scheduler_runtime.py` — Scheduler and Runtime unit tests.

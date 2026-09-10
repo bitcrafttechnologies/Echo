@@ -133,6 +133,10 @@ class ReplayStartBody(BaseModel):
     path: str = Field(min_length=1)
     mode: Literal["signal", "sequential", "step"]
     signal_id: str | None = Field(default=None, min_length=1)
+    timing: Literal["realtime", "accelerated", "immediate", "manual_step"] = (
+        "immediate"
+    )
+    multiplier: float | None = None
     safety_policy: Literal["record_only"] = "record_only"
 
     def to_request(self) -> StartReplayRequest:
@@ -140,6 +144,8 @@ class ReplayStartBody(BaseModel):
             path=self.path,
             mode=self.mode,
             signal_id=self.signal_id,
+            timing=self.timing,
+            multiplier=self.multiplier,
             safety_policy=self.safety_policy,
         )
 
@@ -216,7 +222,7 @@ def create_app(service: RuntimeServiceProtocol) -> FastAPI:
     if not isinstance(service, RuntimeServiceProtocol):
         raise TypeError("service must implement RuntimeServiceProtocol")
 
-    app = FastAPI(title="Echo Runtime API", version="0.8.3")
+    app = FastAPI(title="Echo Runtime API", version="0.8.4")
 
     @app.exception_handler(RuntimeServiceError)
     async def handle_runtime_service_error(
@@ -270,6 +276,10 @@ def create_app(service: RuntimeServiceProtocol) -> FastAPI:
     @app.post("/runtime/replays/{replay_id}/step", tags=["runtime"])
     async def advance_runtime_replay(replay_id: str) -> dict[str, Any]:
         return _as_dict(await service.replay_next_step(replay_id))
+
+    @app.delete("/runtime/replays/{replay_id}", tags=["runtime"])
+    async def cancel_runtime_replay(replay_id: str) -> dict[str, Any]:
+        return _as_dict(await service.cancel_replay(replay_id))
 
     @app.get("/runtime/replays/{replay_id}", tags=["runtime"])
     async def runtime_replay_status(replay_id: str) -> dict[str, Any]:

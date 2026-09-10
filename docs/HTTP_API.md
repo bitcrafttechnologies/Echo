@@ -34,6 +34,7 @@ app = create_app(runtime_service)
 | `GET` | `/runtime/recording` | `get_recording_status()` |
 | `POST` | `/runtime/replays` | `start_replay()` |
 | `POST` | `/runtime/replays/{replay_id}/step` | `replay_next_step()` |
+| `DELETE` | `/runtime/replays/{replay_id}` | `cancel_replay()` |
 | `GET` | `/runtime/replays/{replay_id}` | `get_replay_status()` |
 | `POST` | `/runtime/restart` | `request_restart()` |
 | `GET` | `/runtime/restart/{operation_id}` | `get_restart_operation()` |
@@ -85,10 +86,15 @@ status and as recoverable Runtime error events without failing Signal routing.
 
 `POST /runtime/replays` accepts `path`, a `mode` of `signal`, `sequential`, or
 `step`, the explicit safe `safety_policy` value `record_only`, and a
-`signal_id` only for single-Signal mode. Single and sequential modes finish
-before returning; step mode returns `ready`. Each step request emits exactly
-one recorded Signal through `Runtime.emit()`. Status includes progress and the
-mapping between original and newly assigned runtime Signal IDs. Replayed
+`signal_id` only for single-Signal mode. `timing` accepts `immediate`,
+`realtime`, `accelerated`, or `manual_step`; accelerated timing also requires a
+finite positive `multiplier`. Immediate mode finishes before returning,
+realtime and accelerated modes continue in the background, and manual mode
+returns `ready`. Each step request emits exactly one recorded Signal through
+`Runtime.emit()`. `DELETE` cooperatively cancels before the next Signal and
+does not interrupt an active handler. Status includes timing, multiplier,
+cancellation, progress, and the mapping between original and newly assigned
+runtime Signal IDs. Replayed
 Signals use a current receipt timestamp while preserving original identity and
 time under `metadata.echo_replay`. No replay endpoint enables external Action
 execution.

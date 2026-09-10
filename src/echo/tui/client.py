@@ -170,7 +170,8 @@ class HttpEchoClient:
             ProviderModeCommand, ProviderStatusCommand,
             ConfigInspectCommand, ConfigReloadCommand, ConfigSetCommand,
             RecordingStartCommand, RecordingStatusCommand, RecordingStopCommand,
-            ReplayNextCommand, ReplayStartCommand, ReplayStatusCommand,
+            ReplayCancelCommand, ReplayNextCommand, ReplayStartCommand,
+            ReplayStatusCommand,
             parse_developer_command,
         )
         parsed = parse_developer_command(command)
@@ -180,8 +181,9 @@ class HttpEchoClient:
         elif isinstance(parsed, RecordingStopCommand): path, method, body = "/runtime/recording", "DELETE", None
         elif isinstance(parsed, RecordingStatusCommand): path, method, body = "/runtime/recording", "GET", None
         elif isinstance(parsed, ReplayStartCommand):
-            path, method, body = "/runtime/replays", "POST", {"path": parsed.path, "mode": parsed.mode.value, "signal_id": parsed.signal_id, "safety_policy": parsed.safety_policy.value}
+            path, method, body = "/runtime/replays", "POST", {"path": parsed.path, "mode": parsed.mode.value, "signal_id": parsed.signal_id, "timing": parsed.timing.value, "multiplier": parsed.multiplier, "safety_policy": parsed.safety_policy.value}
         elif isinstance(parsed, ReplayNextCommand): path, method, body = f"/runtime/replays/{quote(parsed.replay_id, safe='')}/step", "POST", None
+        elif isinstance(parsed, ReplayCancelCommand): path, method, body = f"/runtime/replays/{quote(parsed.replay_id, safe='')}", "DELETE", None
         elif isinstance(parsed, ReplayStatusCommand): path, method, body = f"/runtime/replays/{quote(parsed.replay_id, safe='')}", "GET", None
         elif isinstance(parsed, EntityInspectCommand): path, method, body = f"/entities/{quote(parsed.entity_id, safe='')}", "GET", None
         elif isinstance(parsed, SignalListCommand): path, method, body = "/signals?limit=100", "GET", None
