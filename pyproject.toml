@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "echo-runtime"
+version = "0.7.7"
+description = "A lightweight event-driven runtime for intelligent entities"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+[project.optional-dependencies]
+api = ["fastapi>=0.115,<1", "pydantic>=2,<3"]
+test = ["fastapi>=0.115,<1", "httpx>=0.27,<1", "pydantic>=2,<3"]
+
+[project.scripts]
+echoc = "echo.cli:main"
+
+[tool.setuptools.package-data]
+"echo.tui" = ["assets/*.txt"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

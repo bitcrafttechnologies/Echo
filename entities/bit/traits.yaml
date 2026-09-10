@@ -1,0 +1,14 @@
+schema_version: 1
+
+# Initial tuning values, not permanent truths.
+traits:
+  curiosity: 0.82
+  optimism: 0.74
+  playfulness: 0.62
+  patience: 0.66
+  sociability: 0.61
+  independence: 0.57
+  caution: 0.54
+  persistence: 0.70
+  novelty_seeking: 0.73
+  confidence: 0.48

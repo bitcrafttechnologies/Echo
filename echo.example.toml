@@ -1,0 +1,58 @@
+# Echo Phase 6A configuration example. Copy to echo.toml and adjust locally.
+# Prefer environment variables for credentials; do not commit secrets.
+
+[runtime]
+auto_start = true
+
+[logging]
+level = "INFO"
+format = "text"
+
+[history]
+signals = 1000
+tasks = 1000
+actions = 1000
+logs = 1000
+errors = 1000
+
+[persistence]
+enabled = true
+database_path = ".echo/echo.sqlite3"
+
+[providers]
+mode = "auto"
+preference = ["remote", "lan", "offline"]
+history_limit = 100
+
+[providers.openrouter]
+enabled = false
+model = "openrouter/auto"
+base_url = "https://openrouter.ai/api/v1"
+timeout_seconds = 60
+
+[providers.lan]
+enabled = false
+base_url = "http://echo-model-server.local:8080"
+model = "local-model"
+timeout_seconds = 30
+
+[providers.offline]
+enabled = false
+model_path = "models/Mistral-7B-Instruct-v0.3.Q4_K_M.gguf"
+executable = "llama-server"
+request_timeout_seconds = 120
+startup_timeout_seconds = 120
+shutdown_timeout_seconds = 10
+port = 0
+extra_args = []
+
+[api]
+enabled = true
+host = "127.0.0.1"
+port = 8000
+
+[console]
+api_url = "http://127.0.0.1:8000"
+request_timeout_seconds = 3
+poll_interval_seconds = 1
+session_name = "echo-core"
