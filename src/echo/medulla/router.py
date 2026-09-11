@@ -158,6 +158,9 @@ class CapabilityRouter:
             raise ValueError(f"provider already has a route: {binding.provider_id}")
         self._bindings[binding.provider_id] = binding
 
+    def binding(self, provider_id: str) -> CapabilityRouteBinding | None:
+        return self._bindings.get(provider_id)
+
     def unbind(self, provider_id: str) -> CapabilityRouteBinding | None:
         return self._bindings.pop(provider_id, None)
 

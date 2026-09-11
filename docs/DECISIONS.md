@@ -345,3 +345,26 @@ is enforced. After one route begins execution, Medulla returns its result or
 failure without trying another provider, because an uncertain failure may have
 already changed external state. Discovery, trust policy, Action planning, and
 automatic execution from Runtime history remain outside this decision.
+
+## ADR-028: Remote nodes announce inert manifests over existing transports
+
+Status: accepted
+
+Phase 9H defines `medulla/1` as a versioned manifest carried by the existing
+safe `echo.medulla` wire envelope. A node announces identity, type, endpoints,
+capabilities, produced Signal types, resources, health, and authentication or
+pairing metadata. Capabilities use the Phase 9F contract directly and must be
+owned by the manifest's remote provider. Signal names are canonical Echo type
+names; adapter names refer only to code already installed on the Echo side.
+
+Manifests contain closed finite JSON data and never identify executable types
+for dynamic import. Authentication and pairing fields are untrusted claims,
+not authorization or trust state. Unsupported protocol versions fail before
+registry mutation.
+
+The node directory disables provider health and all node-owned capabilities on
+disconnect, preserving enough description for inspection. A new valid
+manifest replaces and restores them on reconnect. Registration is preflighted
+against a detached registry snapshot, and the WebSocket adapter exposes only
+injected manifest/presence hooks. This phase adds no active discovery, remote
+code loading, node daemon, pairing workflow, or trust policy.

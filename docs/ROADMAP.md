@@ -299,8 +299,8 @@ concrete Medulla transports, discovery, trust and capability routing,
 edge ML, robotics, and advanced task behavior remain deferred to the phases
 defined in the plan. Phase 9A's transport abstraction, Phase 9B's local
 reference transport, Phase 9C's WebSocket transport, Phase 9D's optional MQTT
-transport, Phase 9E's serial transport, Phase 9F's capability contract, and
-Phase 9G's registry/router are complete.
+transport, Phase 9E's serial transport, Phase 9F's capability contract, Phase
+9G's registry/router, and Phase 9H's remote-node protocol are complete.
 
 ## Phase 9 Medulla track
 
@@ -323,6 +323,9 @@ Phase 9G's registry/router are complete.
 - Phase 9G (`0.9-medulla_node-0.2`): provider-owned inventory and health,
   capability removal and introspection, permission-gated deterministic routing,
   timeout enforcement, and structured failure containment — completed.
+- Phase 9H (`0.9-medulla_node-0.3`): closed versioned remote-node manifests,
+  capability/Signal/resource mapping, health and pairing metadata, lifecycle
+  registration, disconnect disablement, and reconnect restoration — completed.
 - Later Phase 9 subphases: additional network/device transports,
   capability and Signal-handler discovery, registration and routing, node
   communication, permissions, pairing, authorization, and trust — deferred.

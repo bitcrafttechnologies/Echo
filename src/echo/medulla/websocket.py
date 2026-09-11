@@ -62,6 +62,8 @@ Connector = Callable[..., Any]
 AuthenticationHeaders = Callable[
     [], Mapping[str, str] | Awaitable[Mapping[str, str]]
 ]
+ManifestHandler = Callable[[WireMessage], Any | Awaitable[Any]]
+NodeDisconnectedHandler = Callable[[str], Any | Awaitable[Any]]
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
@@ -107,6 +109,8 @@ class WebSocketTransport(BaseTransport):
         connect_timeout: float = 10.0,
         max_message_bytes: int = DEFAULT_MAX_MESSAGE_BYTES,
         authentication_headers: AuthenticationHeaders | None = None,
+        manifest_handler: ManifestHandler | None = None,
+        node_disconnected_handler: NodeDisconnectedHandler | None = None,
         connector: Connector | None = None,
     ) -> None:
         super().__init__(transport_id)
@@ -125,6 +129,14 @@ class WebSocketTransport(BaseTransport):
         self._connect_timeout = self._positive_number(connect_timeout, "connect_timeout")
         self._max_message_bytes = self._positive_int(max_message_bytes, "max_message_bytes")
         self._authentication_headers = authentication_headers
+        if manifest_handler is not None and not callable(manifest_handler):
+            raise TypeError("manifest_handler must be callable")
+        if node_disconnected_handler is not None and not callable(
+            node_disconnected_handler
+        ):
+            raise TypeError("node_disconnected_handler must be callable")
+        self._manifest_handler = manifest_handler
+        self._node_disconnected_handler = node_disconnected_handler
         self._connector = connector
         self._inbound: asyncio.Queue[Signal] = asyncio.Queue(self._inbound_capacity)
         self._outbound: asyncio.Queue[WireMessage] = asyncio.Queue(self._outbound_capacity)
@@ -392,11 +404,24 @@ class WebSocketTransport(BaseTransport):
             except Exception as error:
                 self._record_connection_error(error)
             finally:
+                disconnected_node_id = self._peer_node_id
                 if self._connected_event.is_set():
                     self._last_disconnected_at = _utc_now()
                 self._connected_event.clear()
                 self._connected_at = None
                 self._peer_node_id = None
+                if (
+                    disconnected_node_id is not None
+                    and self._node_disconnected_handler is not None
+                ):
+                    try:
+                        handled = self._node_disconnected_handler(disconnected_node_id)
+                        if inspect.isawaitable(handled):
+                            await handled
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as error:
+                        self._record_connection_error(error)
                 if not self._shutdown_event.is_set():
                     self._connection_state = WebSocketConnectionState.RECONNECTING
             if self._shutdown_event.is_set():
@@ -530,6 +555,51 @@ class WebSocketTransport(BaseTransport):
             )
             await socket.send(encode_wire_message(response))
             self._messages_sent += 1
+            return
+        if message.type is WireMessageType.MANIFEST:
+            if self._manifest_handler is None:
+                raise WireProtocolError(
+                    "unsupported_message",
+                    "incoming manifest messages require a manifest handler",
+                    message_id=message.id,
+                )
+            manifest = message.payload.get("manifest")
+            if type(manifest) is not dict or type(manifest.get("node")) is not dict:
+                raise WireProtocolError(
+                    "invalid_payload",
+                    "manifest must contain a node object",
+                    message_id=message.id,
+                )
+            manifest_node_id = manifest["node"].get("id")
+            if type(manifest_node_id) is not str or not manifest_node_id:
+                raise WireProtocolError(
+                    "invalid_payload",
+                    "manifest.node.id must be a non-empty string",
+                    message_id=message.id,
+                )
+            if (
+                self._peer_node_id is not None
+                and self._peer_node_id != manifest_node_id
+            ):
+                raise WireProtocolError(
+                    "identity_mismatch",
+                    "manifest node id does not match peer hello",
+                    message_id=message.id,
+                )
+            try:
+                handled = self._manifest_handler(message)
+                if inspect.isawaitable(handled):
+                    await handled
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                error_code = getattr(error, "code", "invalid_manifest")
+                if type(error_code) is not str or not error_code:
+                    error_code = "invalid_manifest"
+                raise WireProtocolError(
+                    error_code, str(error), message_id=message.id
+                ) from error
+            self._peer_node_id = manifest_node_id
             return
         if message.type in {
             WireMessageType.RESULT,

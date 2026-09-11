@@ -2,7 +2,7 @@
 
 ## Current implementation
 
-Echo through Phase 9G plus `0.9.2-package_prep` and the `0.4-tui_core`
+Echo through Phase 9H plus `0.9.2-package_prep` and the `0.4-tui_core`
 interface track consists of a
 minimal, standard-library Python kernel, an optional FastAPI HTTP and WebSocket
 adapter, and a separate SvelteKit development console shell. The documented,
@@ -249,6 +249,38 @@ task cancellation remains cooperative. Once execution begins, the router does
 not fall through to another provider, avoiding duplicate external side
 effects. It does not select, create, or plan Actions and does not implement a
 permission policy, discovery, pairing, or trust.
+
+Phase 9H defines the lightweight `medulla/1` remote-node manifest. A closed,
+ordinary-JSON manifest describes node identity and type, a remote capability
+provider, transport endpoints, Phase 9F capabilities, produced Echo Signal
+types and optional local adapter identifiers, resources, provider health, and
+authentication/pairing metadata. The inner node protocol is versioned
+independently of the existing version-1 `echo.medulla` wire envelope. Unknown
+protocol names and unsupported versions fail with typed `NodeProtocolError`
+codes.
+
+The manifest uses full `Capability` values and requires every capability to be
+owned by the remote node provider. Endpoint/provider identity and duplicate
+IDs are validated before registration. Signal names map directly to Echo
+`Signal.type`; an optional adapter string is only a local adapter identifier.
+Schemas, endpoint metadata, health details, resource metadata, and pairing
+claims are inert JSON. No module name, callback, class, bytecode, or remote
+implementation is loaded or invoked.
+
+`MedullaNodeDirectory` applies a manifest atomically to the Phase 9G registry
+and can bind the provider to an already-configured router transport. It tracks
+node presence and exposes deterministic node, capability, Signal, resource,
+and transport inspection. Disconnect marks every node-owned capability and
+the provider unavailable, immediately removing the route from eligibility;
+reconnect with a valid manifest restores the descriptions and availability.
+Explicit removal also removes the provider and route binding.
+
+The existing wire `manifest` message now has typed encode/decode helpers.
+`WebSocketTransport` accepts optional manifest and node-disconnection hooks,
+checks manifest identity against peer `hello`, and contains hook/manifest
+errors as protocol or connection failures. Serial and MQTT continue using the
+same safe wire envelope; Phase 9H adds no new socket, broker, framing, pairing,
+discovery, or trust implementation.
 
 Phase 7A introduces the small, runtime-checkable `StateStore` boundary between
 Entity state access and storage. Ordinary state is explicitly separated into
@@ -977,10 +1009,13 @@ execution remains deferred to Medulla.
 - Phase 9G (`0.9-medulla_node-0.2`): provider-owned capability inventory,
   removal, provider health, deterministic capability-to-transport routing,
   permission hook, timeout enforcement, introspection, and contained failures.
+- Phase 9H (`0.9-medulla_node-0.3`): versioned remote-node manifests, typed
+  endpoint/Signal/resource/health/pairing descriptions, registry lifecycle,
+  disconnect disablement, reconnect restoration, and WebSocket manifest hooks.
 
 ## In progress
 
-Nothing. Phase 9G is complete. The Phase 1F
+Nothing. Phase 9H is complete. The Phase 1F
 TUI integration requirement remains active across all later phases.
 
 ## Known issues
@@ -1020,7 +1055,7 @@ TUI integration requirement remains active across all later phases.
   Phase 8A recording validates that constraint recursively and rejects unsafe
   values explicitly.
 
-These are roadmap deferrals, not missing Phase 9G acceptance criteria.
+These are roadmap deferrals, not missing Phase 9H acceptance criteria.
 
 ## Architecture decisions
 
@@ -1412,9 +1447,9 @@ These are roadmap deferrals, not missing Phase 9G acceptance criteria.
 
 ## Next task
 
-Stop after Phase 9G. Do not begin Phase 9H, add discovery or implicit Action
-execution, or implement pairing, authorization policy, and trust without
-separate authorization.
+Stop after Phase 9H. Do not begin Phase 9I, add active discovery or implicit
+Action execution, or implement pairing, authorization policy, and trust
+without separate authorization.
 
 ## Important files
 
@@ -1551,6 +1586,9 @@ separate authorization.
 - `src/echo/medulla/router.py` — Phase 9G permission-gated deterministic
   capability-to-transport routing, timeout enforcement, and failure
   containment.
+- `src/echo/medulla/node.py` — Phase 9H versioned remote-node manifest,
+  identity/endpoints/Signals/resources/health/security descriptions, wire
+  helpers, and disconnect/reconnect registry lifecycle.
 - `src/echo/medulla/local.py` — Phase 9B bounded same-process Signal and Action
   queues, overflow policies, shutdown wakeup, and queue health/status.
 - `src/echo/medulla/wire.py` — Phase 9C versioned JSON envelope, safe codec,
@@ -1591,6 +1629,9 @@ separate authorization.
 - `tests/test_phase9g_registry_router.py` — provider ownership/removal and
   health, deterministic duplicate-name routing, permission gating, timeout,
   transport failure, provider exception, and introspection coverage.
+- `tests/test_phase9h_node_protocol.py` — manifest/wire round trips, version
+  rejection, inert-data enforcement, ownership, routing lifecycle, and
+  WebSocket disconnect integration.
 - `tests/test_phase9_character_evolution.py` — bounded trait evolution,
   evidence validation, accepted/rejected audit, and restart-copy continuity.
 - `tests/test_medulla_supervisor.py` — automatic inbound pumping, explicit

@@ -406,10 +406,54 @@ failures. External cancellation is preserved. The router adds no cognition,
 Action construction, behavior selection, discovery, trust, or provider
 implementation.
 
-## Deliberately deferred after Phase 9G
+## Phase 9H remote node protocol
+
+A Medulla Node is not Echo and has no Entity or cognition. It announces one
+closed, JSON-only `medulla/1` manifest containing:
+
+- node ID, display identity, and node type;
+- one remote provider identity and one or more transport endpoints;
+- complete Phase 9F capability descriptions owned by that provider;
+- produced Signal type names, schema descriptions, and optional local adapter
+  identifiers;
+- resource IDs, descriptions, schemas, media types, and inert metadata;
+- current provider health; and
+- authentication methods and pairing metadata, which are claims rather than
+  grants.
+
+The node protocol version is independent of the outer `echo.medulla` wire
+version. `node_manifest_message()` places a manifest in the existing reserved
+wire `manifest` message, so WebSocket, MQTT, and Serial framing can carry it
+without a new transport protocol. `node_manifest_from_message()` performs
+closed validation and rejects unsupported protocol versions before anything
+is registered.
+
+Capability entries are already Phase 9F `Capability` objects. Their provider
+must exactly equal the manifest's remote provider and the provider kind must
+have a corresponding endpoint. A Signal description's `name` is the Echo
+`Signal.type`; its optional `adapter` is a string identifying locally installed
+adapter logic. No import path or executable implementation is accepted or
+loaded from a manifest.
+
+`MedullaNodeDirectory` preflights a complete registration against a detached
+registry copy before changing the live inventory. On connection it registers
+the provider, capabilities, and health, and may create an explicit Phase 9G
+route binding to the already configured transport carrying the node. On
+disconnect it preserves descriptions but marks the provider and every owned
+capability unavailable. A later valid manifest replaces those descriptions
+and restores route eligibility. Explicit node removal deletes the provider,
+capabilities, health, and binding.
+
+`WebSocketTransport` can pass validated wire manifest messages to an injected
+handler and notify an injected node-presence handler when the peer disconnects.
+Manifest identity must match an earlier peer `hello` when present. Handler
+exceptions become safe protocol or connection observations and never terminate
+Echo Core.
+
+## Deliberately deferred after Phase 9H
 
 - concrete HTTP, MCP, and hardware transports;
-- capability, resource, and signal-handler discovery;
+- active capability, resource, and signal-handler discovery;
 - discovery-driven registration and routing;
 - node identity, pairing, authorization, permissions, and trust storage;
 - cross-transport routing and fallback policy;
@@ -417,4 +461,4 @@ implementation.
 
 Phase 9A through 9E use the `0.9.x` line. Phase 9F begins the Medulla node
 iteration series at `0.9-medulla_node-0.1`; Phase 9G is
-`0.9-medulla_node-0.2`.
+`0.9-medulla_node-0.2`, and Phase 9H is `0.9-medulla_node-0.3`.
