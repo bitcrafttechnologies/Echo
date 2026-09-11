@@ -2,7 +2,7 @@
 
 ## Current implementation
 
-Echo through Phase 9E plus `0.9.2-package_prep` and the `0.4-tui_core`
+Echo through Phase 9F plus `0.9.2-package_prep` and the `0.4-tui_core`
 interface track consists of a
 minimal, standard-library Python kernel, an optional FastAPI HTTP and WebSocket
 adapter, and a separate SvelteKit development console shell. The documented,
@@ -205,6 +205,26 @@ transport; bounded queued and in-flight Actions survive reconnect within the
 active generation. Status and health expose port/baud, connection state,
 timestamps, reconnects, frame counts, rejected/noise counts, queue depths, and
 frame/wire versions.
+
+Phase 9F defines the version-1 Medulla capability contract independently of
+every transport. A `Capability` has an explicit stable ID, provider-qualified
+name, human description, detached JSON input and output schemas, current
+availability, declarative permission requirements and risk class, read-only or
+state-changing effect, and normal/hard timeout expectations. A
+`CapabilityProvider` identifies the provider, its local or remote placement,
+and its implementation family without exposing a transport object. The family
+vocabulary anticipates native, MCP, WebSocket, MQTT, Serial, HTTP, GPIO, CAN,
+and ROS providers; Phase 9F implements none of those providers.
+
+`CapabilityRegistry` provides deterministic inspection by stable ID and by
+provider-qualified name. Equal unqualified names from different providers are
+retained and produce an explicit ambiguity error rather than silently choosing
+one provider. Availability can be updated as a new immutable capability
+snapshot and inspected for every registered ID. Capability and registry
+serialization contain ordinary finite JSON values only, and capability
+decoding uses closed version-1 objects. The contract contains no callback,
+downloaded implementation, cognition, discovery, invocation, routing,
+permission grant, trust decision, or transport selection.
 
 Phase 7A introduces the small, runtime-checkable `StateStore` boundary between
 Entity state access and storage. Ordinary state is explicitly separated into
@@ -926,10 +946,14 @@ execution remains deferred to Medulla.
 - Phase 9E (`0.9.5`): optional serial adapter, explicit port/baud/timeouts,
   embedded-friendly framed/versioned JSON, CRC and noise isolation, typed
   Signal ingress, Action encoding, reconnects, and connection health.
+- Phase 9F (`0.9-medulla_node-0.1`): versioned transport-neutral capability
+  definitions, stable provider identity, JSON schemas, availability,
+  permissions/risk, effect and timeout classification, and deterministic
+  registry collision handling.
 
 ## In progress
 
-Nothing. Phase 9E is complete. The Phase 1F
+Nothing. Phase 9F is complete. The Phase 1F
 TUI integration requirement remains active across all later phases.
 
 ## Known issues
@@ -969,7 +993,7 @@ TUI integration requirement remains active across all later phases.
   Phase 8A recording validates that constraint recursively and rejects unsafe
   values explicitly.
 
-These are roadmap deferrals, not missing Phase 9E acceptance criteria.
+These are roadmap deferrals, not missing Phase 9F acceptance criteria.
 
 ## Architecture decisions
 
@@ -1361,8 +1385,9 @@ These are roadmap deferrals, not missing Phase 9E acceptance criteria.
 
 ## Next task
 
-Stop after Phase 9E. Do not begin Phase 9F, add discovery/capability routing,
-or implement pairing, authorization, and trust without separate authorization.
+Stop after Phase 9F. Do not begin Phase 9G, add capability invocation/routing
+or discovery, or implement pairing, authorization, and trust without separate
+authorization.
 
 ## Important files
 
@@ -1493,6 +1518,9 @@ or implement pairing, authorization, and trust without separate authorization.
 - `src/echo/medulla/transport.py` — Phase 9A structural transport protocol,
   lifecycle base, safe boundary validation, status/health records, Action
   dispatch outcomes, and structured errors.
+- `src/echo/medulla/capability.py` — Phase 9F transport-neutral capability,
+  provider, schema, availability, permissions, risk, effect, timeout, and
+  deterministic registry contracts.
 - `src/echo/medulla/local.py` — Phase 9B bounded same-process Signal and Action
   queues, overflow policies, shutdown wakeup, and queue health/status.
 - `src/echo/medulla/wire.py` — Phase 9C versioned JSON envelope, safe codec,
@@ -1527,6 +1555,9 @@ or implement pairing, authorization, and trust without separate authorization.
   failure containment.
 - `tests/test_phase9e_serial_transport.py` — byte framing, noise recovery,
   Signal/Action flow, reconnect delivery, and multi-transport isolation.
+- `tests/test_phase9f_capability_contract.py` — JSON round trips, provider
+  placement, schema safety, effect classification, stable lookup, collision
+  handling, and availability inspection.
 - `tests/test_phase9_character_evolution.py` — bounded trait evolution,
   evidence validation, accepted/rejected audit, and restart-copy continuity.
 - `tests/test_medulla_supervisor.py` — automatic inbound pumping, explicit

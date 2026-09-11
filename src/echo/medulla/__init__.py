@@ -1,5 +1,23 @@
 """Medulla: Echo's transport-neutral boundary to the outside world."""
 
+from echo.medulla.capability import (
+    CAPABILITY_CONTRACT_VERSION,
+    Capability,
+    CapabilityDefinition,
+    CapabilityAvailability,
+    CapabilityAvailabilityState,
+    CapabilityEffect,
+    CapabilityNameCollisionError,
+    CapabilityPermissions,
+    CapabilityProvider,
+    CapabilityProviderKind,
+    CapabilityProviderLocation,
+    CapabilityRegistry,
+    CapabilityRegistryError,
+    CapabilityRisk,
+    CapabilityTimeout,
+)
+
 from echo.medulla.transport import (
     ActionDispatchResult,
     ActionDispatchState,
@@ -86,10 +104,25 @@ from echo.medulla.wire import (
 )
 
 __all__ = [
+    "CAPABILITY_CONTRACT_VERSION",
     "ActionDispatchResult",
     "ActionDispatchState",
     "AuthenticationHeaders",
     "BaseTransport",
+    "Capability",
+    "CapabilityDefinition",
+    "CapabilityAvailability",
+    "CapabilityAvailabilityState",
+    "CapabilityEffect",
+    "CapabilityNameCollisionError",
+    "CapabilityPermissions",
+    "CapabilityProvider",
+    "CapabilityProviderKind",
+    "CapabilityProviderLocation",
+    "CapabilityRegistry",
+    "CapabilityRegistryError",
+    "CapabilityRisk",
+    "CapabilityTimeout",
     "ClockSignalSource",
     "HackerNewsSignalSource",
     "LocalQueueFullError",

@@ -347,15 +347,41 @@ connection/reconnect counts, received/sent/rejected frame counts, discarded
 noise bytes, queue depths, payload limit, and frame/wire versions. Serial I/O,
 framing, and reconnect semantics remain entirely outside Entity and Core.
 
-## Deliberately deferred after Phase 9E
+## Phase 9F capability contract
+
+`Capability` is the versioned, transport-neutral description Echo can inspect
+to understand what an external or local provider says it can do. Each
+capability declares a stable ID, name, description, provider, ordinary-JSON
+input and output schemas, current availability, permission requirements and
+risk class, read-only or state-changing effect, and expected and maximum
+execution time. Definitions contain data only: there are no callbacks,
+implementation objects, executable schemas, or cognitive instructions.
+
+`CapabilityProvider` gives every provider a stable ID, a local or remote
+location, and an implementation-family label. The labels cover anticipated
+native, MCP, WebSocket, MQTT, Serial, HTTP, GPIO, CAN, and ROS integrations,
+but do not couple a capability to a configured transport or implement any of
+those provider families.
+
+The in-memory `CapabilityRegistry` indexes stable IDs and provider-qualified
+names. An unqualified name resolves only when exactly one provider registered
+it; otherwise resolution fails with an explicit collision error. Registry
+inspection is sorted by stable ID. Availability updates replace one immutable
+capability observation while preserving identity and definition fields.
+
+Capability objects serialize to closed, finite, ordinary JSON values under
+contract version 1. Their schemas are opaque JSON schema descriptions at this
+boundary; Phase 9F validates safe serialization, not schema dialect semantics
+or invocation arguments.
+
+## Deliberately deferred after Phase 9F
 
 - concrete HTTP, MCP, and hardware transports;
 - capability, resource, and signal-handler discovery;
-- capability registration and Action routing;
+- capability invocation and Action routing;
 - node identity, pairing, authorization, permissions, and trust storage;
 - cross-transport routing and fallback policy;
 - remote implementation loading (which remains prohibited).
 
-Phase 9 subphase branches use the `0.9.x` line: Phase 9A is `0.9.1`, Phase 9B
-is `0.9.2`, Phase 9C is `0.9.3`, Phase 9D is `0.9.4`, Phase 9E is `0.9.5`, and
-subsequent lettered subphases increment the patch version.
+Phase 9A through 9E use the `0.9.x` line. Phase 9F begins the Medulla node
+iteration series at `0.9-medulla_node-0.1`.

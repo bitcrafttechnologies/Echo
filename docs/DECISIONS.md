@@ -309,3 +309,21 @@ evidence IDs, source, reason, and before/after values. Evidence and audit
 windows are bounded and copied during graceful Entity reconstruction. This
 decision adds neither automatic model reflection nor authority for Medulla to
 change character; cold-process durable trait storage remains a later concern.
+
+## ADR-026: Capabilities are inert, provider-qualified descriptions
+
+Status: accepted
+
+Phase 9F represents a capability as versioned ordinary data: stable ID, name,
+description, provider identity and placement, JSON input/output schemas,
+availability, permissions and risk, effect classification, and timeout
+expectations. Provider kind is descriptive and transport-neutral. A capability
+contains no callback or implementation, and registration grants no permission,
+trust, or execution authority.
+
+Stable IDs are the primary identity. Provider-qualified names are unique in a
+registry, while equal unqualified names may coexist across providers. An
+unqualified lookup with more than one match fails explicitly instead of using
+registration order or provider kind as an implicit priority. Invocation,
+Action routing, discovery, pairing, authorization, and provider implementations
+remain later decisions.
