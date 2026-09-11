@@ -342,13 +342,24 @@ before creating semantic, preference, or relationship memory. All accepted and
 rejected decisions remain in bounded audit histories owned with the Entity
 memory store.
 
+The Phase 9 character slice makes slow trait evolution an explicit Echo-owned
+service. Providers may propose typed evidence grouped into a reflection, but
+the proposal contains no assignable trait value or requested delta. Core
+requires repeated, recent, confident evidence, accounts for contradiction,
+rejects unknown and protected traits, and clamps one accepted adjustment to a
+small policy maximum. Both accepted and rejected outcomes retain evidence IDs,
+reason, source, and before/after values in bounded immutable audit records.
+The service is copied with Entity character during graceful reconstruction;
+Medulla does not import or invoke it.
+
 ## Boundaries
 
 The implemented kernel, service, command, and subscription layers contain no
-LLM, persistence, ROS, or Medulla transport. Provider contracts and routing,
-FastAPI, and the TUI exist only as optional outward-facing layers.
-Actions are structured intent records; execution against the outside world
-belongs to the later Medulla boundary.
+LLM, persistence, ROS, or protocol transport. Provider contracts and routing,
+FastAPI, the TUI, and the Phase 9A Medulla transport contract exist only as
+optional outward-facing layers. Actions remain structured intent records;
+Phase 9A defines their transport-facing representation and Phase 9B supplies a
+local reference adapter, but neither connects an executor to the Runtime.
 The Phase 2A `action.executed` observation identifies execution at the Runtime
 intent boundary, not an external side effect.
 
@@ -373,6 +384,42 @@ Core primitives do not depend on optional infrastructure. `Entity` owns a
 handler registry and can be attached to a `Runtime`; `Runtime` owns a
 `Scheduler` and registered entities. Optional systems added later must depend
 on this kernel rather than redefine it.
+
+Medulla follows the same dependency rule. `echo.medulla` depends inward on
+`Signal` and `Action`; `echo.core` does not import Medulla. Concrete protocol
+adapters implement the structural transport contract outside Core. Incoming
+data must be safely decoded and validated into a detached Signal before Core
+can see it, and outbound Actions are detached and validated before an adapter
+can encode them. See `MEDULLA.md` for lifecycle, health, and error semantics.
+
+`LocalQueueTransport` is a Medulla implementation, not a Core service. Its
+same-process queues demonstrate both directions of the boundary.
+`MedullaSupervisor` owns transport lifecycle and inbound receive pumps at the
+application layer through a narrow structural `SignalTarget`; Runtime still
+does not import Medulla. Outbound dispatch is an explicit application call and
+does not consume Action history or make behavior, trust, or capability-routing
+decisions. `EchoApplication` is an optional one-Entity composition helper over
+these existing objects, not a second runtime architecture.
+
+`WebSocketTransport` adds network I/O without changing that dependency
+direction. Its client connection manager owns reconnect backoff and bounded
+queues. The versioned `echo.medulla` JSON codec rejects executable or unknown
+wire data before canonical Signal validation. Connection state is adapter
+health, not Core lifecycle. Authentication is an injected header hook; pairing,
+trust, manifests, discovery, and capability routing remain separate later work.
+
+`MQTTTransport` follows the same application-layer rule. Broker configuration,
+topic mapping, QoS, reconnect state, and the optional MQTT dependency stay in
+`echo.medulla.mqtt`; Entity and Core see only validated Signals and explicit
+Action dispatch. MQTT topics are configured endpoints, not discovered
+capabilities, and MQTT availability has no authority or cognition semantics.
+
+`SerialTransport` likewise terminates physical link semantics inside Medulla.
+Its dependency-free delimiter/escape/length/CRC codec rejects noise before the
+shared JSON wire validator constructs a Signal. Blocking `pyserial` operations
+run outside the event loop, while device reconnect state remains transport
+health. Entity and Core contain no serial ports, baud rates, framing, or device
+library types.
 
 Presentation and transport adapters depend on `RuntimeServiceProtocol` and the
 public command/subscription schemas. They do not depend on Runtime internals.

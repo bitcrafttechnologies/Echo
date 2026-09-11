@@ -189,3 +189,123 @@ The initial retrieval implementation is deterministic lexical ranking with
 importance and recency tie-breakers. This keeps Core local-first and
 inspectable; embedding retrieval may be added behind the repository/service
 boundary later without becoming the persistence authority.
+
+## ADR-019: Medulla owns protocol I/O behind a transport-neutral contract
+
+Status: accepted
+
+Phase 9A introduces `echo.medulla.Transport` as an asynchronous structural
+contract over Echo-native Signals and Actions. Echo Core does not import or
+invoke transports. A reusable `BaseTransport` owns the common stopped,
+starting, running, stopping, and failed lifecycle; validates and detaches
+boundary primitives; translates adapter exceptions into structured errors;
+and represents health-probe failures as unavailable health data.
+
+Local status is non-probing while health may perform I/O. Action dispatch
+distinguishes accepted, completed, rejected, and failed outcomes without
+making behavior decisions. Protocol framing, concrete transports, Runtime
+wiring, discovery, capability routing, reconnection, permissions, and node
+trust remain deferred. External discovery will register descriptions only and
+will never import executable code from a remote system.
+
+## ADR-020: Local queues are bounded, non-blocking reference transport paths
+
+Status: accepted
+
+Phase 9B implements independent inbound Signal and outbound Action queues with
+explicit positive capacities. Producers never wait for capacity: each queue
+either rejects the newest value with a retryable structured error or drops
+exactly one oldest value and reports its ID. Queue depths and overflow counters
+are inspectable, and saturation degrades health.
+
+Stopping wakes every pending reader, drains queued work, and a later start
+creates a fresh queue generation. This prevents stale Signals or Actions from
+crossing restart boundaries. The implementation is a same-event-loop adapter;
+it does not add a Runtime pump, Action routing or authorization, discovery,
+networking, or cross-thread synchronization.
+
+## ADR-021: Medulla supervision is application composition, not Core execution
+
+Status: accepted
+
+The package-preparation branch adds `MedullaSupervisor` around a structural
+inward `SignalTarget`. Runtime satisfies that port with `emit()` but never
+imports Medulla. The supervisor owns transport startup, shutdown, receive
+pumps, bounded failure observations, aggregate health, and explicit outbound
+dispatch. One failed transport or handler delivery does not terminate Core or
+another transport.
+
+Action history remains an audit record and is never polled as an execution
+queue. A caller must explicitly dispatch an already-authorized Action to a
+named or configured-default transport. This preserves the difference between
+Echo intent and an external side effect while leaving capability selection,
+trust, permissions, retries, and fallback for later Phase 9 work.
+
+## ADR-022: WebSocket availability is transport health, not Echo lifecycle
+
+Status: accepted
+
+Phase 9C uses a client-side connection manager inside `WebSocketTransport`.
+Starting the transport starts bounded queues and the reconnect loop even when
+the remote endpoint is unavailable. Disconnects therefore degrade transport
+health and retain a structured retryable error; they do not fail Echo Runtime.
+Queued outbound Actions survive reconnects within the active transport
+generation, while stop cancels the manager and discards that generation.
+
+The version-1 `echo.medulla` wire envelope is strict, duplicate-free JSON with
+closed envelope fields, known type names, a size limit, and ordinary finite
+JSON values only. Canonical Signal validation remains a second boundary before
+Core. Authentication is a header-provider injection hook; pairing, trust,
+authorization, manifest discovery, routing, and result correlation are not
+implied by a successful socket connection.
+
+## ADR-023: MQTT topics are configured transport paths, not discovery
+
+Status: accepted
+
+Phase 9D makes the MQTT broker, client identity, TLS, QoS, and provisional
+Entity-scoped topic mapping explicit application configuration. Signal,
+Action, and status payloads use the existing safe Medulla wire envelope rather
+than introducing MQTT-native domain objects. MQTT remains an optional,
+lazy-loaded adapter and does not enter Entity or Core.
+
+Broker unavailability is degraded transport health handled by the adapter's
+reconnect loop. It cannot terminate Runtime or another transport. Connected
+and graceful-stop status observations are non-retained until a later phase
+explicitly defines Last Will and durable presence semantics; this avoids a
+stale retained online assertion after an abrupt device or network failure.
+Topic availability does not discover, pair, authorize, or trust a capability.
+
+## ADR-024: Serial frames resynchronize before wire-message validation
+
+Status: accepted
+
+Phase 9E places a small dependency-free framing layer below the versioned
+Medulla JSON envelope. `0x7E` delimiters and `0x7D` escaping surround a frame
+version, unsigned 16-bit payload length, UTF-8 JSON payload, and IEEE CRC-32.
+This is implementable on a microcontroller without Echo or Python and lets a
+bounded incremental parser recover from boot logs, line noise, truncation, and
+corruption before any payload reaches Signal validation.
+
+Serial device availability is adapter health. Port-open, read, and write
+failures trigger bounded reconnect behavior and cannot stop Runtime or another
+transport. `pyserial` is imported lazily; Entity and Core never depend on the
+serial library, frame representation, port configuration, or baud rate.
+
+## ADR-025: Trait evolution consumes evidence, never requested values
+
+Status: accepted
+
+Phase 9 completes its character slice with an Entity-owned trait evolution
+service. Providers and other observers may submit immutable, timestamped
+evidence in a typed reflection, but the contract has no desired trait value or
+requested adjustment. Echo policy alone evaluates repetition, confidence,
+recency, contradiction, duplicate use, configured trait membership, and an
+optional mutable-trait allowlist. One accepted decision can change a trait by
+no more than the configured small bound.
+
+Accepted and rejected outcomes both retain immutable audit records with
+evidence IDs, source, reason, and before/after values. Evidence and audit
+windows are bounded and copied during graceful Entity reconstruction. This
+decision adds neither automatic model reflection nor authority for Medulla to
+change character; cold-process durable trait storage remains a later concern.

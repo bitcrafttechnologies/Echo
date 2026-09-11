@@ -17,6 +17,10 @@ vertical phase integration are documented in `docs/CHARACTER_ARCHITECTURE.md`.
 The stable Phase 3 control, command, subscription, response, and error contract
 is documented in `docs/RUNTIME_API.md`.
 
+To embed the packaged runtime in a new Python project with project-owned
+character files and local Medulla I/O, see the
+[developer quickstart](https://github.com/bitcrafttechnologies/Echo/blob/main/docs/DEVELOPER_QUICKSTART.md).
+
 ## Start Echo before opening a UI
 
 The web console and TUI are clients. Neither one starts Echo Core or its HTTP
@@ -354,6 +358,86 @@ the Echo command prompt. New application startup should construct this router
 through `EchoConfig.create_provider_router()` so configuration is validated
 before providers are created.
 
+## Local Medulla source demo
+
+Phase 9B includes optional one-shot clock, current-weather, and headline
+sources routed through `LocalQueueTransport`. With Echo installed, run:
+
+```console
+python3 examples/local_medulla_sources.py
+```
+
+Weather defaults to Phoenix and can be changed without editing code:
+
+```console
+python3 examples/local_medulla_sources.py \
+  --latitude 40.7128 --longitude -74.0060 --location "New York, NY" \
+  --news-limit 3
+```
+
+The demo uses Open-Meteo and Hacker News without API keys. It prints a source
+failure and continues if either service is unavailable. These are explicit
+local producers, not automatically scheduled or trusted capabilities.
+
+## WebSocket Medulla transport
+
+Phase 9C adds an optional reconnectable client transport for connecting Echo
+to another process or device:
+
+```python
+from echo import EchoApplication, Entity, WebSocketTransport
+
+transport = WebSocketTransport(
+    "wss://device.example/medulla",
+    authentication_headers=lambda: {"Authorization": "Bearer ..."},
+)
+application = EchoApplication(Entity("echo"), [transport])
+await application.start()
+```
+
+Install it with `python -m pip install 'echo-runtime[websocket]==0.9.5'`.
+Socket availability is reported through transport status and health; an
+offline peer does not crash Echo and the connection manager retries with
+bounded backoff. The version-1 JSON wire schema and deliberately deferred
+discovery/trust behavior are documented in `docs/MEDULLA.md`.
+
+Phase 9D also provides optional MQTT transport for lightweight sensors and
+devices. Broker and topic configuration are explicit:
+
+```python
+from echo import MQTTBrokerConfig, MQTTTopicMap, MQTTTransport
+
+mqtt = MQTTTransport(
+    MQTTBrokerConfig(
+        host="broker.example",
+        port=8883,
+        client_id="echo-bit",
+        tls=True,
+    ),
+    MQTTTopicMap(entity_id="bit"),
+)
+```
+
+Install it with `python -m pip install 'echo-runtime[mqtt]==0.9.5'`. The
+default topics are `echo/bit/signals/#`, `echo/bit/actions/{encoded-type}`,
+and `echo/bit/status/transport`. MQTT remains an application-configured
+transport and is not required for Medulla discovery.
+
+Phase 9E supports directly connected embedded devices with explicit serial
+configuration:
+
+```python
+from echo import SerialPortConfig, SerialTransport
+
+serial = SerialTransport(
+    SerialPortConfig(port="/dev/ttyUSB0", baudrate=115200)
+)
+```
+
+Install it with `python -m pip install 'echo-runtime[serial]==0.9.5'`. The
+framing protocol is versioned, CRC-protected, bounded, and documented in
+`docs/MEDULLA.md` so firmware can implement it independently.
+
 ## Phase 1 example
 
 ```python
@@ -371,17 +455,19 @@ await runtime.emit(Signal(type="battery.low", payload={"percent": 0.08}))
 ```
 
 Awaiting `emit` returns after the signal and all matching handlers have been
-processed. Actions are observable intent records in Phase 1; external execution
-is intentionally deferred.
+processed. Actions remain observable intent records unless an application
+explicitly dispatches an already-authorized Action through Medulla.
 
 ## Character architecture base
 
 `src/echo/entity/` contains provider-independent base value types for identity,
 traits, internal state, drives, relationships, memory, and the self-model.
-Phases 2–5
+Phases 2–9
 compose identity, traits, embodiment-independent self-model, runtime control
 state, drives, attention, detached per-person social context, and five typed
-memory categories into the public `Entity`; later character slices remain
-deferred to their roadmap phases. Bit remains reference configuration under
+memory categories into the public `Entity`. Trait changes pass through typed
+reflection evidence and a bounded Echo-owned policy with accepted/rejected
+audit records; providers and Medulla cannot assign traits directly. Bit remains
+reference configuration under
 `entities/bit/`, including
 model guidance under `entities/bit/prompts/`.

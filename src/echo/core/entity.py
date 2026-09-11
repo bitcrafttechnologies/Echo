@@ -52,7 +52,12 @@ from echo.entity.state_store import (
     StateStore,
     StateView,
 )
-from echo.entity.traits import TraitProfile
+from echo.entity.traits import (
+    TraitEvolutionDecision,
+    TraitEvolutionService,
+    TraitProfile,
+    TraitReflection,
+)
 
 if TYPE_CHECKING:
     from echo.core.runtime import Runtime
@@ -68,6 +73,7 @@ class Entity:
         state: dict[str, Any] | None = None,
         identity: EntityIdentity | None = None,
         traits: TraitProfile | None = None,
+        trait_evolution: TraitEvolutionService | None = None,
         self_model: SelfModel | None = None,
         internal_state: InternalState | None = None,
         drives: DriveProfile | None = None,
@@ -93,6 +99,20 @@ class Entity:
             raise ValueError("identity entity_id must match Entity id")
         if self_model.entity_id != entity_id:
             raise ValueError("self-model entity_id must match Entity id")
+        if traits is not None and not isinstance(traits, TraitProfile):
+            raise TypeError("traits must be a TraitProfile")
+        if trait_evolution is not None and not isinstance(
+            trait_evolution, TraitEvolutionService
+        ):
+            raise TypeError("trait_evolution must be a TraitEvolutionService")
+        if trait_evolution is not None and trait_evolution.entity_id != entity_id:
+            raise ValueError("trait_evolution entity_id must match Entity id")
+        if (
+            trait_evolution is not None
+            and traits is not None
+            and trait_evolution.profile != traits
+        ):
+            raise ValueError("traits must match the trait evolution profile")
         if internal_state is not None and not isinstance(
             internal_state, InternalState
         ):
@@ -119,7 +139,9 @@ class Entity:
             raise ValueError("behavior entity_id must match Entity id")
         self._id = entity_id
         self._identity = identity
-        self._traits = traits or TraitProfile()
+        self._trait_evolution = trait_evolution or TraitEvolutionService(
+            entity_id, traits or TraitProfile()
+        )
         self._self_model = self_model
         self._internal_state = InternalState(
             **(internal_state or InternalState()).to_dict()
@@ -171,7 +193,11 @@ class Entity:
 
     @property
     def traits(self) -> TraitProfile:
-        return self._traits
+        return self._trait_evolution.profile
+
+    @property
+    def trait_evolution(self) -> TraitEvolutionService:
+        return self._trait_evolution
 
     @property
     def self_model(self) -> SelfModel:
@@ -286,7 +312,7 @@ class Entity:
         copied = Entity(
             self.id,
             identity=self.identity,
-            traits=self.traits,
+            trait_evolution=self._trait_evolution.copy(),
             self_model=SelfModel(**self.self_model.to_dict()),
             internal_state=self.internal_state,
             drives=self.drives,
@@ -302,6 +328,13 @@ class Entity:
 
     def inspect_relationship(self, subject_id: str) -> RelationshipState | None:
         return self._relationships.get(subject_id)
+
+    def reflect_on_traits(
+        self, reflection: TraitReflection
+    ) -> TraitEvolutionDecision:
+        """Submit evidence to Echo-owned policy; inference cannot assign traits."""
+
+        return self._trait_evolution.consider(reflection)
 
     @property
     def memories(self) -> tuple[MemoryRecord, ...]:
@@ -389,6 +422,7 @@ class Entity:
         return {
             "identity": self.identity.to_dict(),
             "traits": self.traits.to_dict(),
+            "trait_evolution": self._trait_evolution.to_dict(),
             "self_model": self.self_model.to_dict(),
             "internal_state": self._internal_state.to_dict(),
             "drives": {

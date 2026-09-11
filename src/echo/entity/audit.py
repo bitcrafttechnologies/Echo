@@ -37,7 +37,7 @@ class CharacterMutationDecision(StrEnum):
 
 @dataclass(slots=True, kw_only=True, frozen=True)
 class CharacterMutationAuditRecord:
-    """Structured audit term; storage and mutation policy remain later work."""
+    """Structured, immutable record of a character mutation decision."""
 
     entity_id: str
     target: CharacterMutationTarget

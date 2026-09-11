@@ -60,7 +60,14 @@ from echo.entity.relationships import RelationshipState, RelationshipStore
 from echo.entity.self_model import SelfModel
 from echo.entity.state import InternalState
 from echo.entity.state_store import InMemoryStateStore, StateCategory, StateStore
-from echo.entity.traits import TraitEvidence, TraitProfile
+from echo.entity.traits import (
+    TraitEvidence,
+    TraitEvolutionDecision,
+    TraitEvolutionPolicy,
+    TraitEvolutionService,
+    TraitProfile,
+    TraitReflection,
+)
 
 __all__ = [
     "CharacterMutationAuditRecord",
@@ -112,7 +119,11 @@ __all__ = [
     "SemanticMemory",
     "SignalInfluence",
     "TraitEvidence",
+    "TraitEvolutionDecision",
+    "TraitEvolutionPolicy",
+    "TraitEvolutionService",
     "TraitProfile",
+    "TraitReflection",
     "WorkingMemory",
     "user_statement_candidates",
 ]

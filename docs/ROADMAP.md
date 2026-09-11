@@ -294,9 +294,32 @@ policy work and Phase 8E Console replay controls are also complete.
 
 ## Deferred
 
-Remaining runtime APIs, concrete model providers,
-advanced autonomous memory, Medulla transports, edge ML, robotics,
-and advanced task behavior remain deferred to the phases defined in the plan.
+Remaining runtime APIs, concrete model providers, advanced autonomous memory,
+concrete Medulla transports, discovery, trust and capability routing,
+edge ML, robotics, and advanced task behavior remain deferred to the phases
+defined in the plan. Phase 9A's transport abstraction, Phase 9B's local
+reference transport, Phase 9C's WebSocket transport, Phase 9D's optional MQTT
+transport, and Phase 9E's serial transport are complete.
+
+## Phase 9 Medulla track
+
+- Phase 9A (`0.9.1`): protocol-neutral transport lifecycle, receive/execute
+  boundary, safe validation, structured errors, and status/health — completed.
+- Phase 9B (`0.9.2`): bounded same-process inbound/outbound queues, explicit
+  overflow policy, clean shutdown, and queue health/status — completed.
+- `0.9.2-package_prep`: reusable Medulla supervision, explicit Action
+  dispatch, one-Entity package composition, distribution metadata, and a
+  clean installed-wheel example — completed on the package-preparation branch.
+- Phase 9C (`0.9.3`): versioned safe JSON WebSocket protocol, reconnectable
+  client transport, authentication hook, and connection health — completed.
+- Phase 9D (`0.9.4`): optional MQTT transport, explicit broker configuration,
+  provisional Signal/Action/status topics, reconnects, and health — completed.
+- Phase 9E (`0.9.5`): optional serial transport, embedded-friendly versioned
+  CRC framing, noise isolation, reconnects, and health — completed.
+- Later Phase 9 subphases: additional network/device transports,
+  capability and Signal-handler discovery, registration and routing, node
+  communication, permissions, pairing, authorization, and trust — deferred.
+- Phase 9 subphases increment the `0.9.x` patch version; Phase 9E is `0.9.5`.
 
 ## Persistent character vertical track
 
@@ -314,8 +337,11 @@ and advanced task behavior remain deferred to the phases defined in the plan.
   completed; Phase 7E adds durable semantic and character-development memory.
 - Phase 8: typed intentions, behavior arbitration, interruptibility, and
   low-priority curiosity goals — completed.
-- Phase 9: evidence-based, bounded, auditable character evolution.
-- Phase 10 and later: embodiment signals constrain state, goals, and behavior.
+- Phase 9: typed reflection evidence, bounded trait updates, accepted/rejected
+  audit records, and graceful-restart continuity — completed. Medulla remains
+  separate and has no character-mutation authority.
+- Phase 10 and later: validated embodiment Signals constrain state, goals, and
+  behavior after crossing the Medulla boundary.
 
 Provider and embodiment continuity tests are acceptance criteria throughout,
 not a final integration exercise.

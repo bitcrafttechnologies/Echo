@@ -4,20 +4,39 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "echo-runtime"
-version = "0.8.5"
+version = "0.9.5"
 description = "A lightweight event-driven runtime for intelligent entities"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["agents", "event-driven", "runtime", "signals", "medulla"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/bitcrafttechnologies/Echo"
+Repository = "https://github.com/bitcrafttechnologies/Echo"
+Documentation = "https://github.com/bitcrafttechnologies/Echo/tree/main/docs"
 
 [project.optional-dependencies]
 api = ["fastapi>=0.115,<1", "pydantic>=2,<3"]
-test = ["fastapi>=0.115,<1", "httpx>=0.27,<1", "pydantic>=2,<3"]
+websocket = ["websockets>=14,<17"]
+mqtt = ["aiomqtt>=2,<3"]
+serial = ["pyserial>=3.5,<4"]
+test = ["fastapi>=0.115,<1", "httpx>=0.27,<1", "pydantic>=2,<3", "websockets>=14,<17"]
 
 [project.scripts]
 echoc = "echo.cli:main"
 
 [tool.setuptools.package-data]
+"echo" = ["py.typed"]
 "echo.tui" = ["assets/*.txt"]
 
 [tool.setuptools.packages.find]

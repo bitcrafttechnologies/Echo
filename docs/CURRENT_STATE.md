@@ -2,7 +2,8 @@
 
 ## Current implementation
 
-Echo through Phase 8E plus the `0.4-tui_core` interface track consists of a
+Echo through Phase 9E plus `0.9.2-package_prep` and the `0.4-tui_core`
+interface track consists of a
 minimal, standard-library Python kernel, an optional FastAPI HTTP and WebSocket
 adapter, and a separate SvelteKit development console shell. The documented,
 transport-agnostic runtime
@@ -82,6 +83,128 @@ decision contains an Action intent but neither records nor executes it
 implicitly. High-salience attention can create background curiosity work;
 active Entity work defers it rather than interrupting or causing speech,
 movement, or tool use.
+
+The Phase 9 character architecture slice is implemented alongside Medulla.
+Providers and runtime observations may submit typed `TraitEvidence` only
+through a `TraitReflection`; they cannot assign trait values or request an
+arbitrary delta. Echo-owned `TraitEvolutionPolicy` requires repeated, recent,
+sufficiently confident evidence with a dominant direction, rejects unknown or
+policy-protected traits and reused evidence, and bounds any accepted adjustment
+to 0.05 by default. Accepted and rejected decisions retain their evidence IDs,
+before/after values, source, and reason in bounded immutable audit records.
+The current profile, evidence window, duplicate protection, and audit window
+survive graceful Entity reconstruction and appear in detached character
+inspection. This slice does not let Medulla mutate character and does not add
+automatic model reflection or a durable trait database.
+
+Phase 9A establishes `echo.medulla` as a separate, protocol-neutral boundary
+that depends inward on Echo's `Signal` and `Action` primitives. Its structural
+`Transport` contract covers asynchronous start, stop, receive, Action execute,
+active health, and non-probing local status. `BaseTransport` provides the
+shared stopped/starting/running/stopping/failed lifecycle, idempotent stable
+transitions, boundary validation and detachment, structured error translation,
+last-error inspection, and health failure containment while preserving normal
+task cancellation. No concrete transport, Runtime execution wiring,
+discovery, capability routing, or trust workflow is part of Phase 9A.
+
+Phase 9B adds `LocalQueueTransport` as the same-process reference adapter.
+External producers publish validated Signals into a bounded inbound queue;
+Medulla receives them through the Phase 9A contract. Outbound Actions are
+validated, accepted into a separate bounded queue, and retrieved by an
+external consumer. Each direction independently rejects the newest item with
+a retryable structured error or drops exactly one oldest item. Queue-aware
+status exposes depth, capacity, overflow policy, rejection, drop, and shutdown
+discard counters, while saturation degrades health. Stop wakes all pending
+readers, drains both queues, and a later start uses a fresh generation. Runtime
+wiring is supplied by the package-preparation composition described below.
+
+Three optional one-shot source adapters demonstrate the local inbound path.
+`ClockSignalSource` publishes `time.observed`; `OpenMeteoWeatherSource`
+normalizes bounded current-condition JSON into `weather.observed`; and
+`HackerNewsSignalSource` normalizes at most ten stories into one bounded
+`news.headlines_observed` Signal. HTTP access uses a standard-library client
+with explicit timeout and response-size limits, and tests replace it with
+deterministic fetchers. These sources are examples, not formal registered or
+trusted capabilities, recurring schedulers, or Runtime wiring.
+
+The `0.9.2-package_prep` branch supplies the first reusable Runtime wiring at
+the application layer. `MedullaSupervisor` starts and stops transports,
+maintains one inbound Signal pump per running transport, contains failures in
+bounded inspection records, provides aggregate health, and explicitly
+dispatches an already-authorized Action to a named or sole default transport.
+It never polls Runtime Action history and adds no cognition, discovery, trust,
+retry, or capability-routing policy. `EchoApplication` composes one
+programmatic or project-seeded Entity with a Runtime and supervisor. Project
+character files, application-specific Signal/Action schemas, and any UI remain
+outside the wheel. Distribution metadata declares the MIT license and
+typed-package marker; a clean-wheel integration test installs and runs Echo
+from outside the repository. `docs/DEVELOPER_QUICKSTART.md` documents the new
+developer path.
+
+Phase 9C adds a reconnectable client-side `WebSocketTransport`. A strict
+version-1 JSON envelope identifies the `echo.medulla` protocol, message type,
+message ID, and ordinary JSON payload. The schema reserves `signal`, `action`,
+`result`, `status`, `hello`, `manifest`, `heartbeat`, and `error`; only the
+Phase 9C transport behavior is active. Incoming Signals pass through the
+closed canonical Signal validator before entering the bounded receive queue,
+and outbound Actions are detached and validated before entering a bounded
+send queue. JSON decoding rejects duplicate keys, non-finite numbers,
+oversized messages, unknown envelope fields, unknown types, and malformed
+payloads without importing types or constructing arbitrary Python objects.
+
+The connection manager starts independently of remote availability, retries
+with bounded exponential backoff, retains queued Actions across reconnects,
+and reports malformed messages back as safe protocol errors without dropping
+an otherwise usable connection. Initial connection failure and later
+disconnects remain contained inside the adapter, so neither Echo Runtime nor
+another Medulla transport is stopped. Status and health expose sanitized
+endpoint identity, connection/reconnection state, timestamps, counters, queue
+depths, peer hello identity, and wire version. An injected header-provider
+hook is the only authentication surface; Phase 9C does not implement pairing,
+authorization, stored credentials, manifest discovery, capability routing, or
+result semantics.
+
+Phase 9D adds an optional reconnectable `MQTTTransport` for lightweight
+distributed sensors and devices. Broker hostname, port, client ID, TLS,
+credentials, keepalive, timeout, QoS, capacities, and reconnect bounds are
+explicit configuration rather than discovery. `MQTTTopicMap` supplies the
+provisional `echo/{entity}/signals/#`, `echo/{entity}/actions/{type}`, and
+`echo/{entity}/status/transport` mapping; prefixes are configurable and Action
+types are percent-encoded into one topic level. Signal and Action payloads use
+the Phase 9C versioned JSON envelope, so MQTT ingress reaches the same closed
+Signal validation path and never constructs arbitrary Python objects.
+
+The optional `aiomqtt` dependency is imported only when the default client is
+constructed. Startup launches a contained broker connection manager even when
+the broker is offline, and capped reconnect backoff retains bounded outbound
+Actions within the active transport generation. Invalid broker messages are
+counted and rejected without ending a healthy client session. Connected and
+graceful-stop status observations use the mapped status topic without retained
+presence claims. MQTT status/health exposes broker address, TLS, client/topic
+mapping, QoS, connection timestamps and counters, and queue depth while
+excluding credentials. No Entity imports MQTT, and MQTT is neither required
+nor consulted for Medulla discovery.
+
+Phase 9E adds an optional reconnectable `SerialTransport` for microcontrollers
+and directly attached embedded devices. `SerialPortConfig` makes the device
+port, baud rate, read timeout, and write timeout explicit. The dependency-free
+frame codec uses `0x7E` delimiters and `0x7D` escaping around a version byte,
+big-endian 16-bit payload length, UTF-8 Medulla JSON, and big-endian CRC-32.
+The incremental parser bounds encoded data, discards out-of-frame noise,
+rejects invalid escapes, versions, lengths, and CRCs, and resynchronizes at the
+next delimiter. This small framing contract can be implemented directly in
+microcontroller firmware without importing Echo or Python.
+
+Only complete frame-version-1 payloads containing wire-version-1 `signal`
+messages reach canonical Signal validation. Outbound supported Actions use the
+same JSON Action message inside a serial frame. Blocking device reads and
+writes run outside the event loop through the optional, lazily imported
+`pyserial` adapter. Port-open, read, and write failures degrade serial health
+and trigger capped reconnect backoff without stopping Echo or another
+transport; bounded queued and in-flight Actions survive reconnect within the
+active generation. Status and health expose port/baud, connection state,
+timestamps, reconnects, frame counts, rejected/noise counts, queue depths, and
+frame/wire versions.
 
 Phase 7A introduces the small, runtime-checkable `StateStore` boundary between
 Entity state access and storage. Ordinary state is explicitly separated into
@@ -785,10 +908,28 @@ execution remains deferred to Medulla.
 - Phase 8 character: typed JSON-safe intentions, Core behavior arbitration,
   explicit external-Action authorization, interruptibility, and bounded
   background curiosity goals without implicit Action recording or execution.
+- Phase 9A (`0.9.1`): protocol-neutral Medulla transport interface, reusable
+  lifecycle enforcement, structured transport errors, minimal status/health
+  snapshots, safe Signal/Action boundary validation, and neutral Action
+  dispatch outcomes.
+- Phase 9B (`0.9.2`): bounded local Signal and Action queues, explicit
+  reject-newest/drop-oldest overflow behavior, queue inspection and health,
+  clean waiter shutdown, fresh restart generations, and optional one-shot
+  clock, Open-Meteo weather, and Hacker News source examples.
+- Phase 9C (`0.9.3`): strict versioned WebSocket wire messages, validated
+  inbound Signals, queued outbound Actions, contained connection failure,
+  automatic reconnect backoff, an authentication-header hook, safe protocol
+  rejection, and connection health/status.
+- Phase 9D (`0.9.4`): optional MQTT broker adapter, explicit broker/TLS/QoS
+  configuration, provisional Entity topic mapping, typed Signal ingress,
+  queued Action and status publication, reconnects, and isolated health.
+- Phase 9E (`0.9.5`): optional serial adapter, explicit port/baud/timeouts,
+  embedded-friendly framed/versioned JSON, CRC and noise isolation, typed
+  Signal ingress, Action encoding, reconnects, and connection health.
 
 ## In progress
 
-Nothing. Phase 8E and the Phase 8 character slice are complete. The Phase 1F
+Nothing. Phase 9E is complete. The Phase 1F
 TUI integration requirement remains active across all later phases.
 
 ## Known issues
@@ -801,7 +942,9 @@ TUI integration requirement remains active across all later phases.
   takes longer than a scheduled offset; normal Runtime ordering remains serial.
 - Recording session selection in the web Console uses a path available to the
   Echo host; the current storage API has no remote file browser or upload.
-- Actions have no Medulla executor or transport.
+- Actions have no automatic Runtime routing. Phase 9B supplies a local queue
+  endpoint and Phase 9C supplies explicit WebSocket dispatch without polling
+  Action history or coupling Core to Medulla.
 - The root launcher provides a development process host; production service
   supervision, packaging, and deployment remain intentionally unspecified.
 - OpenRouter, explicit LAN inference, and lazy local llama.cpp inference are
@@ -819,11 +962,14 @@ TUI integration requirement remains active across all later phases.
   and survive a coordinated development restart copy, but do not yet use a
   dedicated durable store or durable character audit log.
 - Scheduler `periodic` is a priority class, not a recurring timer facility.
+- Local clock, weather, and news sources are one-shot producers. Echo does not
+  yet schedule them, configure them through TOML, or grant them discovered
+  capability/trust status.
 - Signal payloads must already contain JSON-compatible values for `to_json`;
   Phase 8A recording validates that constraint recursively and rejects unsafe
   values explicitly.
 
-These are roadmap deferrals, not missing Phase 8E acceptance criteria.
+These are roadmap deferrals, not missing Phase 9E acceptance criteria.
 
 ## Architecture decisions
 
@@ -840,7 +986,29 @@ These are roadmap deferrals, not missing Phase 8E acceptance criteria.
 - Awaited emission is the Phase 1 runtime boundary.
 - One handler invocation maps to one Task.
 - Handler exceptions mark Tasks failed and propagate to the emitter.
-- Actions are recorded intent until Medulla exists.
+- Actions remain recorded intent until an application explicitly dispatches
+  an already-authorized Action through Medulla. No transport polls Runtime
+  Action history or makes authorization decisions.
+- Echo Core does not import Medulla. `echo.medulla` depends inward on Signal
+  and Action, and concrete protocol adapters will depend on that boundary.
+- Transport status is local and non-probing; health may perform I/O and returns
+  unavailable data on probe failure. Unexpected adapter failures become
+  structured transport errors, while task cancellation remains cancellation.
+- Incoming external Signal shapes and outbound Action values must be detached,
+  finite JSON data before crossing a transport implementation hook.
+- Phase 9C wire messages are closed, versioned JSON envelopes. Unknown or
+  malformed input is rejected as protocol data; executable deserialization is
+  prohibited.
+- WebSocket remote availability is orthogonal to transport lifecycle. A
+  running adapter may be disconnected and degraded while its reconnect loop
+  remains active. Authentication is supplied only by an injectable header
+  provider in this phase.
+- MQTT is an optional Medulla adapter and never an Entity or discovery
+  dependency. Its topic hierarchy is configurable implementation guidance for
+  Phase 9D rather than a frozen discovery contract.
+- Serial framing is a dependency-free embedded protocol boundary. Serial port
+  libraries and reconnect policy remain inside Medulla and never enter Entity
+  or Core.
 - Runtime logging depends only on a small synchronous sink interface.
 - Sink failures never alter Runtime control flow.
 - Signal history owns copied snapshots, is bounded independently per Runtime,
@@ -1077,10 +1245,124 @@ These are roadmap deferrals, not missing Phase 8E acceptance criteria.
   active work produces a deferred goal. Entity inspection and coordinated
   restart copies preserve the resulting character state.
 
+## Phase 9A Medulla transport abstraction
+
+- `Transport` is a runtime-checkable, protocol-neutral async interface for
+  start, stop, receive, execute, status, and health.
+- `BaseTransport` centralizes lifecycle enforcement and translates unexpected
+  adapter exceptions into inspectable Medulla errors. Echo Core remains free
+  of transport imports and transport failures cannot enter its control flow.
+- Receive returns only a freshly detached, validated Echo Signal. The external
+  mapping validator accepts a closed canonical schema and plain finite JSON;
+  it does not import types or deserialize Python objects.
+- Execute receives a detached, validated Action and returns accepted,
+  completed, rejected, or failed protocol-neutral dispatch data. It does not
+  authorize the Action or interpret the result cognitively.
+- Status performs no I/O. Health can probe availability and contains probe
+  failure as an unavailable snapshot. Lifecycle and availability remain
+  separate dimensions.
+- Concrete transports, Runtime supervision/injection, discovery, capability
+  registration/routing, pairing, permissions, and trust remain deferred.
+
+## Phase 9B local transport
+
+- `LocalQueueTransport` implements the Phase 9A structural contract without a
+  network or device dependency.
+- `publish_signal()` and standard `receive()` form the inbound boundary;
+  standard `execute()` and `receive_action()` form the outbound boundary.
+- Inbound and outbound capacities are positive and independently configured.
+  Queue offers never wait for space. Reject-newest raises a retryable
+  `queue_full` error; drop-oldest accepts the new item, reports the displaced
+  ID, and increments a direction-specific counter.
+- Local status reports both depths, capacities, overflow policies, rejections,
+  drops, and shutdown discards. Running with available capacity is healthy,
+  saturation is degraded, and a stopped transport is unavailable.
+- Shutdown wakes every pending Signal and Action reader, discards queued work,
+  and prevents stale items from crossing a later restart.
+- The adapter targets one asyncio event loop. Runtime pumps, Action routing,
+  network/device transports, discovery, authorization, and trust are deferred.
+- Optional local source adapters normalize clock, Open-Meteo weather, and
+  Hacker News data into three Signal types. Network and schema failures stop
+  at the source boundary before queue publication.
+
+## Phase 9C WebSocket transport
+
+- `WebSocketTransport` is a client adapter implementing the Phase 9A contract;
+  startup succeeds even when its configured remote is offline.
+- The `echo.medulla` version-1 envelope contains exactly `protocol`, `version`,
+  `type`, `id`, and `payload`. Supported type names anticipate later protocol
+  growth without activating discovery.
+- Only strict UTF-8 JSON is decoded. Size limits, duplicate-key rejection,
+  finite-number validation, closed Signal validation, and ordinary built-in
+  container checks keep external data non-executable.
+- Signals enter a bounded inbound queue. Actions enter a bounded outbound
+  queue and are sent after the active connection or a later reconnect accepts
+  them. Queue saturation is a structured retryable failure.
+- Unknown, malformed, directionally unsupported, and premature manifest
+  messages receive a bounded `error` response and do not crash Echo.
+- Connection loss is contained and retried with capped exponential backoff.
+  Stop cancels the manager and clears this generation's queues.
+- Local status and active health expose connection state, sanitized endpoint,
+  connection timestamps, reconnect/message counters, queue depths, peer hello
+  identity, and wire version. Query parameters and authentication headers are
+  excluded from inspection.
+- `authentication_headers` is a synchronous-or-asynchronous injection hook.
+  Phase 9C defines no token format, credential store, pairing, authorization,
+  trust, manifest ingestion, discovery registry, or result correlation.
+
+## Phase 9D MQTT transport
+
+- `MQTTBrokerConfig` requires an explicit hostname and client ID and exposes
+  port, TLS, username/password, keepalive, and connection timeout. Passwords
+  are excluded from representations and all status/health output.
+- `MQTTTopicMap` defaults to `echo/{entity}/signals/#` for inbound Signals,
+  `echo/{entity}/actions/{encoded-type}` for outbound Actions, and
+  `echo/{entity}/status/transport` for connection observations. The prefix is
+  configurable and the mapping is not declared a permanent discovery schema.
+- MQTT payloads reuse the version-1 Medulla JSON envelope. Only `signal`
+  messages accepted on the Signal subscription become typed Echo Signals;
+  malformed or directionally incorrect messages are rejected and counted.
+- Actions use a bounded outbound queue and configured QoS. Offline and
+  interrupted publishes are retried after reconnect within the same transport
+  generation; saturation returns a structured retryable failure.
+- Broker connection failure degrades MQTT health while the reconnect manager
+  remains active. It does not fail Echo Runtime, the Medulla supervisor, or a
+  healthy local/WebSocket transport.
+- Status events publish on connect and graceful stop. They are non-retained so
+  an abrupt disconnect cannot leave a stale retained `connected` assertion in
+  the absence of Phase 9D Last Will/session-presence semantics.
+- `aiomqtt` is an optional extra and is imported lazily. MQTT types do not
+  enter `echo.core`, `Entity`, capability discovery, or trust policy.
+
+## Phase 9E serial transport
+
+- `SerialPortConfig` requires a port and positive baud rate, with explicit
+  finite read and write timeouts. `pyserial` is a lazy optional dependency.
+- Each frame begins and ends with `0x7E`. Within the frame, `0x7E` and `0x7D`
+  bytes are escaped as `0x7D` followed by the byte XOR `0x20`.
+- The unescaped body is one frame-version byte, a big-endian unsigned 16-bit
+  payload length, that many UTF-8 JSON bytes, then a big-endian CRC-32 over the
+  version, length, and JSON bytes. Frame version 1 is currently supported.
+- The JSON is the independent version-1 Medulla wire envelope. Serial ingress
+  accepts only `signal` messages and passes them through canonical closed
+  Signal validation. Outbound Actions use `action` messages in the same frame.
+- Incremental parsing has a configured maximum payload and encoded-buffer
+  bound. Boot text, partial frames, invalid escapes, unsupported versions,
+  mismatched lengths, bad CRCs, malformed JSON, and wrong message directions
+  are discarded and counted before Core can observe them.
+- Device open/read/write failures leave the transport running but degraded and
+  reconnect with capped backoff. Bounded queued or interrupted Actions retry
+  after reconnect within the same generation. Other transports keep running.
+- Status and health report port/baud, connection timestamps and state,
+  reconnects, accepted/sent/rejected frames, discarded noise bytes, queue
+  depths, payload bound, and framing/wire versions.
+- The frame codec and parser have no `pyserial` dependency, so firmware can
+  implement the documented byte protocol without the Python Echo stack.
+
 ## Next task
 
-Stop after Phase 8E. Do not begin Phase 9, external Action execution, or any
-broader autonomous behavior without separate authorization.
+Stop after Phase 9E. Do not begin Phase 9F, add discovery/capability routing,
+or implement pairing, authorization, and trust without separate authorization.
 
 ## Important files
 
@@ -1208,8 +1490,56 @@ broader autonomous behavior without separate authorization.
 - `src/echo/core/signal_history.py` — bounded Signal snapshots and queries.
 - `src/echo/core/task_history.py` — reference-backed Task lifecycle history.
 - `src/echo/core/action_history.py` — bounded Action lifecycle history.
+- `src/echo/medulla/transport.py` — Phase 9A structural transport protocol,
+  lifecycle base, safe boundary validation, status/health records, Action
+  dispatch outcomes, and structured errors.
+- `src/echo/medulla/local.py` — Phase 9B bounded same-process Signal and Action
+  queues, overflow policies, shutdown wakeup, and queue health/status.
+- `src/echo/medulla/wire.py` — Phase 9C versioned JSON envelope, safe codec,
+  message types, and Signal/Action message conversion.
+- `src/echo/medulla/websocket.py` — Phase 9C reconnectable client transport,
+  authentication hook, bounded queues, protocol rejection, and health/status.
+- `src/echo/medulla/mqtt.py` — Phase 9D optional MQTT broker transport, topic
+  mapping, bounded queues, reconnect management, and broker health/status.
+- `src/echo/medulla/serial.py` — Phase 9E embedded framing codec/parser and
+  optional reconnectable serial transport with health/status.
+- `src/echo/medulla/supervisor.py` — application-level transport lifecycle,
+  inbound Runtime pumps, bounded failure inspection, aggregate health, and
+  explicit outbound Action dispatch.
+- `src/echo/application.py` — one-Entity convenience composition for a
+  programmatic Entity or project-owned seed directory, Runtime, and Medulla.
+- `src/echo/medulla/sources/` — one-shot clock, Open-Meteo weather, Hacker News,
+  and bounded JSON source adapters for local transport experiments.
+- `examples/local_medulla_sources.py` — runnable local transport demonstration
+  for all three source Signals with configurable coordinates and headline cap.
+- `docs/MEDULLA.md` — normative Medulla separation, lifecycle, failure,
+  validation, local queue, supervision, and later-phase deferral rules.
+- `docs/DEVELOPER_QUICKSTART.md` — clean-project installation, Entity seed,
+  local Medulla, custom Signal/Action, and future website integration guide.
+- `tests/test_phase9a_transport.py` — lifecycle, protocol conformance,
+  validation, error containment, health degradation, and cancellation coverage.
+- `tests/test_phase9b_local_transport.py` — inbound/outbound Echo flow,
+  overflow, isolation, inspection, shutdown, and restart-generation coverage.
+- `tests/test_phase9c_websocket_transport.py` — wire validation, bidirectional
+  flow, connection containment, reconnects, auth hook, and health coverage.
+- `tests/test_phase9d_mqtt_transport.py` — topic/broker configuration, typed
+  flow, invalid payload isolation, reconnect delivery, and multi-transport
+  failure containment.
+- `tests/test_phase9e_serial_transport.py` — byte framing, noise recovery,
+  Signal/Action flow, reconnect delivery, and multi-transport isolation.
+- `tests/test_phase9_character_evolution.py` — bounded trait evolution,
+  evidence validation, accepted/rejected audit, and restart-copy continuity.
+- `tests/test_medulla_supervisor.py` — automatic inbound pumping, explicit
+  outbound dispatch, failure isolation, health, application loading, and clean
+  shutdown coverage.
+- `tests/test_installed_package.py` — builds and installs the wheel into a
+  clean environment and runs a downstream project-owned Entity end to end.
+- `tests/test_local_medulla_sources.py` — deterministic offline normalization,
+  publication, validation, fallback URL, and hard-bound coverage.
 - `src/echo/core/inspection.py` — JSON-safe inspection conversion.
 - `src/echo/entity/audit.py` — character mutation audit vocabulary.
+- `src/echo/entity/traits.py` — immutable traits plus reflection evidence and
+  Echo-owned bounded evolution policy.
 - `tests/test_signal.py` — Signal unit tests.
 - `tests/test_phase8a_signal_recording.py` — Phase 8A format, durability,
   lifecycle, safety rejection, partial-session, and compatibility coverage.
