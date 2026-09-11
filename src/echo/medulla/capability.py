@@ -91,6 +91,13 @@ class CapabilityAvailabilityState(StrEnum):
     UNAVAILABLE = "unavailable"
 
 
+class CapabilityProviderHealthState(StrEnum):
+    UNKNOWN = "unknown"
+    HEALTHY = "healthy"
+    DEGRADED = "degraded"
+    UNAVAILABLE = "unavailable"
+
+
 class CapabilityRisk(StrEnum):
     """Broad risk class used by later, external authorization policy."""
 
@@ -143,6 +150,52 @@ class CapabilityProvider:
             location=data.get("location"),
             display_name=data.get("display_name"),
         )
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class CapabilityProviderHealth:
+    """Transport-neutral health observation for one registered provider."""
+
+    provider_id: str
+    state: CapabilityProviderHealthState = CapabilityProviderHealthState.UNKNOWN
+    message: str | None = None
+    details: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "provider_id", _identifier(self.provider_id, "provider_id"))
+        object.__setattr__(self, "state", CapabilityProviderHealthState(self.state))
+        if self.message is not None:
+            _required_string(self.message, "provider_health.message")
+        details = _safe_json(self.details, "provider_health.details")
+        if not isinstance(details, dict):
+            raise ValueError("provider_health.details must be an object")
+        object.__setattr__(self, "details", details)
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "provider_id": self.provider_id,
+            "state": self.state.value,
+            "details": _safe_json(self.details, "provider_health.details"),
+        }
+        if self.message is not None:
+            result["message"] = self.message
+        return result
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> CapabilityProviderHealth:
+        data = _closed_object(
+            data, {"provider_id", "state", "message", "details"}, "provider_health"
+        )
+        return cls(
+            provider_id=data.get("provider_id"),
+            state=data.get("state", CapabilityProviderHealthState.UNKNOWN.value),
+            message=data.get("message"),
+            details=data.get("details", {}),
+        )
+
+
+ProviderHealth = CapabilityProviderHealth
+ProviderHealthState = CapabilityProviderHealthState
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
@@ -378,8 +431,39 @@ class CapabilityRegistry:
         self._by_id: dict[str, Capability] = {}
         self._by_qualified_name: dict[str, str] = {}
         self._by_name: dict[str, set[str]] = {}
+        self._providers: dict[str, CapabilityProvider] = {}
+        self._provider_health: dict[str, CapabilityProviderHealth] = {}
         for capability in capabilities:
             self.register(capability)
+
+    def register_provider(
+        self,
+        provider: CapabilityProvider,
+        *,
+        health: CapabilityProviderHealth | None = None,
+    ) -> None:
+        if not isinstance(provider, CapabilityProvider):
+            raise TypeError("provider must be a CapabilityProvider")
+        current = self._providers.get(provider.provider_id)
+        if current is not None and current != provider:
+            raise CapabilityRegistryError(
+                f"provider id has conflicting metadata: {provider.provider_id}"
+            )
+        if health is not None:
+            if not isinstance(health, CapabilityProviderHealth):
+                raise TypeError("health must be CapabilityProviderHealth")
+            if health.provider_id != provider.provider_id:
+                raise CapabilityRegistryError(
+                    "provider health provider_id does not match provider"
+                )
+        self._providers[provider.provider_id] = provider
+        self._provider_health.setdefault(
+            provider.provider_id,
+            health
+            or CapabilityProviderHealth(provider_id=provider.provider_id),
+        )
+        if health is not None:
+            self._provider_health[provider.provider_id] = health
 
     def register(self, capability: Capability) -> None:
         if not isinstance(capability, Capability):
@@ -392,12 +476,42 @@ class CapabilityRegistry:
             raise CapabilityRegistryError(
                 f"duplicate provider-qualified capability name: {capability.qualified_name}"
             )
+        self.register_provider(capability.provider)
         self._by_id[capability.capability_id] = capability
         self._by_qualified_name[capability.qualified_name] = capability.capability_id
         self._by_name.setdefault(capability.name, set()).add(capability.capability_id)
 
     def get(self, capability_id: str) -> Capability | None:
         return self._by_id.get(capability_id)
+
+    def provider(self, provider_id: str) -> CapabilityProvider | None:
+        return self._providers.get(provider_id)
+
+    def providers(self) -> tuple[CapabilityProvider, ...]:
+        return tuple(self._providers[item] for item in sorted(self._providers))
+
+    def health(self, provider_id: str) -> CapabilityProviderHealth | None:
+        return self._provider_health.get(provider_id)
+
+    def update_provider_health(
+        self, health: CapabilityProviderHealth
+    ) -> CapabilityProviderHealth:
+        if not isinstance(health, CapabilityProviderHealth):
+            raise TypeError("health must be CapabilityProviderHealth")
+        if health.provider_id not in self._providers:
+            raise KeyError(health.provider_id)
+        self._provider_health[health.provider_id] = health
+        return health
+
+    def capabilities_for_provider(self, provider_id: str) -> tuple[Capability, ...]:
+        return tuple(
+            item for item in self.inspect() if item.provider.provider_id == provider_id
+        )
+
+    def find(self, name: str) -> tuple[Capability, ...]:
+        return tuple(
+            self._by_id[item] for item in sorted(self._by_name.get(name, ()))
+        )
 
     def resolve(self, name: str, *, provider_id: str | None = None) -> Capability | None:
         """Resolve one name or fail rather than choosing across providers."""
@@ -414,6 +528,25 @@ class CapabilityRegistry:
                 f"capability name {name!r} is ambiguous across providers: {providers!r}"
             )
         return self._by_id[identifiers[0]]
+
+    def remove(self, capability_id: str) -> Capability | None:
+        capability = self._by_id.pop(capability_id, None)
+        if capability is None:
+            return None
+        self._by_qualified_name.pop(capability.qualified_name, None)
+        identifiers = self._by_name[capability.name]
+        identifiers.remove(capability_id)
+        if not identifiers:
+            del self._by_name[capability.name]
+        return capability
+
+    def remove_provider(self, provider_id: str) -> tuple[Capability, ...]:
+        removed = self.capabilities_for_provider(provider_id)
+        for capability in removed:
+            self.remove(capability.capability_id)
+        self._providers.pop(provider_id, None)
+        self._provider_health.pop(provider_id, None)
+        return removed
 
     def inspect(self) -> tuple[Capability, ...]:
         return tuple(self._by_id[item] for item in sorted(self._by_id))
@@ -438,12 +571,21 @@ class CapabilityRegistry:
     def to_dict(self) -> dict[str, Any]:
         return {
             "contract_version": CAPABILITY_CONTRACT_VERSION,
+            "providers": [item.to_dict() for item in self.providers()],
+            "provider_health": [
+                self._provider_health[item].to_dict()
+                for item in sorted(self._provider_health)
+            ],
             "capabilities": [item.to_dict() for item in self.inspect()],
         }
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> CapabilityRegistry:
-        data = _closed_object(data, {"contract_version", "capabilities"}, "registry")
+        data = _closed_object(
+            data,
+            {"contract_version", "providers", "provider_health", "capabilities"},
+            "registry",
+        )
         if data.get("contract_version") != CAPABILITY_CONTRACT_VERSION:
             raise ValueError(
                 f"registry.contract_version must be {CAPABILITY_CONTRACT_VERSION}"
@@ -451,7 +593,20 @@ class CapabilityRegistry:
         capabilities = data.get("capabilities")
         if type(capabilities) is not list:
             raise ValueError("registry.capabilities must be a list")
-        return cls(Capability.from_dict(item) for item in capabilities)
+        providers = data.get("providers", [])
+        provider_health = data.get("provider_health", [])
+        if type(providers) is not list:
+            raise ValueError("registry.providers must be a list")
+        if type(provider_health) is not list:
+            raise ValueError("registry.provider_health must be a list")
+        registry = cls()
+        for item in providers:
+            registry.register_provider(CapabilityProvider.from_dict(item))
+        for item in capabilities:
+            registry.register(Capability.from_dict(item))
+        for item in provider_health:
+            registry.update_provider_health(CapabilityProviderHealth.from_dict(item))
+        return registry
 
 
 def _closed_object(
@@ -475,10 +630,14 @@ __all__ = [
     "CapabilityNameCollisionError",
     "CapabilityPermissions",
     "CapabilityProvider",
+    "CapabilityProviderHealth",
+    "CapabilityProviderHealthState",
     "CapabilityProviderKind",
     "CapabilityProviderLocation",
     "CapabilityRegistry",
     "CapabilityRegistryError",
     "CapabilityRisk",
     "CapabilityTimeout",
+    "ProviderHealth",
+    "ProviderHealthState",
 ]

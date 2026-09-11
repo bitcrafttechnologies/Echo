@@ -327,3 +327,21 @@ unqualified lookup with more than one match fails explicitly instead of using
 registration order or provider kind as an implicit priority. Invocation,
 Action routing, discovery, pairing, authorization, and provider implementations
 remain later decisions.
+
+## ADR-027: Capability routing is deterministic and does not retry side effects
+
+Status: accepted
+
+Phase 9G keeps provider ownership and health in the capability registry and
+maps providers to transport IDs through explicit route bindings. An Action
+names the capability Echo already chose to attempt. The router filters on
+declared capability availability and provider health, delegates authorization
+to an injected permission hook, and orders eligible routes by availability,
+health, configured priority, provider ID, and stable capability ID.
+
+Registration order is never a routing input. A provider exception is converted
+to a structured dispatch failure, and the declared maximum capability timeout
+is enforced. After one route begins execution, Medulla returns its result or
+failure without trying another provider, because an uncertain failure may have
+already changed external state. Discovery, trust policy, Action planning, and
+automatic execution from Runtime history remain outside this decision.

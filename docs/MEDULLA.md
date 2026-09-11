@@ -374,14 +374,47 @@ contract version 1. Their schemas are opaque JSON schema descriptions at this
 boundary; Phase 9F validates safe serialization, not schema dialect semantics
 or invocation arguments.
 
-## Deliberately deferred after Phase 9F
+## Phase 9G registry and router
+
+The registry is the central inventory of capability descriptions and provider
+identity. Providers may be registered before their capabilities. Each
+capability is owned by exactly the provider embedded in its definition;
+conflicting metadata for one provider ID is rejected. Capability or whole-
+provider removal updates stable-ID, qualified-name, and unqualified-name
+indexes together. Provider health is a transport-neutral unknown, healthy,
+degraded, or unavailable observation and is serialized with the inventory.
+
+`CapabilityRouter` maps registered provider IDs to configured transport IDs.
+An Action's type is the requested capability name; the router does not choose
+the Action. Candidate selection excludes unknown/unavailable capabilities,
+unavailable providers, and providers without a binding. Remaining candidates
+are ordered by availability, health, non-negative configured priority,
+provider ID, and capability ID, so registration order cannot change routing.
+Callers may explicitly constrain provider or stable capability ID.
+
+Before selecting a transport, the router calls an injected asynchronous
+permission hook for each eligible candidate. The hook returns a typed allow or
+deny decision; Medulla defines no grant or authorization policy. If no
+candidate is permitted, nothing is dispatched. Once a candidate is selected,
+the router invokes only its configured transport through the existing
+supervisor-compatible dispatch port. It never falls through after execution
+starts because doing so could duplicate a state-changing external effect.
+
+Missing routes, denial, permission-hook errors, capability timeout, provider
+exceptions, and transport failures all produce structured Action dispatch
+failures. External cancellation is preserved. The router adds no cognition,
+Action construction, behavior selection, discovery, trust, or provider
+implementation.
+
+## Deliberately deferred after Phase 9G
 
 - concrete HTTP, MCP, and hardware transports;
 - capability, resource, and signal-handler discovery;
-- capability invocation and Action routing;
+- discovery-driven registration and routing;
 - node identity, pairing, authorization, permissions, and trust storage;
 - cross-transport routing and fallback policy;
 - remote implementation loading (which remains prohibited).
 
 Phase 9A through 9E use the `0.9.x` line. Phase 9F begins the Medulla node
-iteration series at `0.9-medulla_node-0.1`.
+iteration series at `0.9-medulla_node-0.1`; Phase 9G is
+`0.9-medulla_node-0.2`.

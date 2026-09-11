@@ -2,7 +2,7 @@
 
 ## Current implementation
 
-Echo through Phase 9F plus `0.9.2-package_prep` and the `0.4-tui_core`
+Echo through Phase 9G plus `0.9.2-package_prep` and the `0.4-tui_core`
 interface track consists of a
 minimal, standard-library Python kernel, an optional FastAPI HTTP and WebSocket
 adapter, and a separate SvelteKit development console shell. The documented,
@@ -225,6 +225,30 @@ serialization contain ordinary finite JSON values only, and capability
 decoding uses closed version-1 objects. The contract contains no callback,
 downloaded implementation, cognition, discovery, invocation, routing,
 permission grant, trust decision, or transport selection.
+
+Phase 9G turns the descriptive catalog into Medulla's central capability and
+provider inventory. The registry now supports explicit provider registration,
+provider-owned capability lookup and removal, provider removal, current
+capability availability, transport-neutral provider health, and complete JSON
+introspection. A provider ID cannot silently acquire conflicting metadata, and
+removal updates every capability-name index predictably.
+
+`CapabilityRouter` binds each registered provider to an explicitly configured
+transport ID. For an already-created Action, it finds capabilities with the
+matching name, excludes unavailable capabilities and providers, evaluates an
+application-owned asynchronous permission hook, and chooses one route by
+capability availability, provider health, configured priority, provider ID,
+and capability ID. This order is stable and does not depend on registration
+order. An explicit provider or capability ID can narrow the lookup.
+
+The selected route dispatches through the existing supervisor-compatible
+transport port and enforces the capability's maximum timeout. Lookup,
+permission, timeout, provider, and transport failures return structured
+`ActionDispatchResult` failures. Provider exceptions are contained; normal
+task cancellation remains cooperative. Once execution begins, the router does
+not fall through to another provider, avoiding duplicate external side
+effects. It does not select, create, or plan Actions and does not implement a
+permission policy, discovery, pairing, or trust.
 
 Phase 7A introduces the small, runtime-checkable `StateStore` boundary between
 Entity state access and storage. Ordinary state is explicitly separated into
@@ -950,10 +974,13 @@ execution remains deferred to Medulla.
   definitions, stable provider identity, JSON schemas, availability,
   permissions/risk, effect and timeout classification, and deterministic
   registry collision handling.
+- Phase 9G (`0.9-medulla_node-0.2`): provider-owned capability inventory,
+  removal, provider health, deterministic capability-to-transport routing,
+  permission hook, timeout enforcement, introspection, and contained failures.
 
 ## In progress
 
-Nothing. Phase 9F is complete. The Phase 1F
+Nothing. Phase 9G is complete. The Phase 1F
 TUI integration requirement remains active across all later phases.
 
 ## Known issues
@@ -993,7 +1020,7 @@ TUI integration requirement remains active across all later phases.
   Phase 8A recording validates that constraint recursively and rejects unsafe
   values explicitly.
 
-These are roadmap deferrals, not missing Phase 9F acceptance criteria.
+These are roadmap deferrals, not missing Phase 9G acceptance criteria.
 
 ## Architecture decisions
 
@@ -1385,9 +1412,9 @@ These are roadmap deferrals, not missing Phase 9F acceptance criteria.
 
 ## Next task
 
-Stop after Phase 9F. Do not begin Phase 9G, add capability invocation/routing
-or discovery, or implement pairing, authorization, and trust without separate
-authorization.
+Stop after Phase 9G. Do not begin Phase 9H, add discovery or implicit Action
+execution, or implement pairing, authorization policy, and trust without
+separate authorization.
 
 ## Important files
 
@@ -1520,7 +1547,10 @@ authorization.
   dispatch outcomes, and structured errors.
 - `src/echo/medulla/capability.py` — Phase 9F transport-neutral capability,
   provider, schema, availability, permissions, risk, effect, timeout, and
-  deterministic registry contracts.
+  Phase 9G provider health, ownership, removal, and registry introspection.
+- `src/echo/medulla/router.py` — Phase 9G permission-gated deterministic
+  capability-to-transport routing, timeout enforcement, and failure
+  containment.
 - `src/echo/medulla/local.py` — Phase 9B bounded same-process Signal and Action
   queues, overflow policies, shutdown wakeup, and queue health/status.
 - `src/echo/medulla/wire.py` — Phase 9C versioned JSON envelope, safe codec,
@@ -1558,6 +1588,9 @@ authorization.
 - `tests/test_phase9f_capability_contract.py` — JSON round trips, provider
   placement, schema safety, effect classification, stable lookup, collision
   handling, and availability inspection.
+- `tests/test_phase9g_registry_router.py` — provider ownership/removal and
+  health, deterministic duplicate-name routing, permission gating, timeout,
+  transport failure, provider exception, and introspection coverage.
 - `tests/test_phase9_character_evolution.py` — bounded trait evolution,
   evidence validation, accepted/rejected audit, and restart-copy continuity.
 - `tests/test_medulla_supervisor.py` — automatic inbound pumping, explicit
