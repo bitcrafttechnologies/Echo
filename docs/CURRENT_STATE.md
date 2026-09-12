@@ -2,7 +2,7 @@
 
 ## Current implementation
 
-Echo through Phase 9H plus `0.9.2-package_prep` and the `0.4-tui_core`
+Echo through Phase 9I plus `0.9.2-package_prep` and the `0.4-tui_core`
 interface track consists of a
 minimal, standard-library Python kernel, an optional FastAPI HTTP and WebSocket
 adapter, and a separate SvelteKit development console shell. The documented,
@@ -281,6 +281,29 @@ checks manifest identity against peer `hello`, and contains hook/manifest
 errors as protocol or connection failures. Serial and MQTT continue using the
 same safe wire envelope; Phase 9H adds no new socket, broker, framing, pairing,
 discovery, or trust implementation.
+
+Phase 9I adds a failure-contained discovery and identification layer for
+remote Medulla Nodes. `MDNSDiscoveryBackend` optionally browses the
+`_medulla._tcp.local.` DNS-SD service through `python-zeroconf`, resolves node
+ID, `medulla/1` protocol, addresses, port, and manifest location, and passes a
+transport-neutral advertisement into `MedullaNodeDiscovery`. The dependency is
+lazy and optional; missing multicast support or backend failure degrades only
+discovery, leaving local Medulla and explicit node configuration usable.
+
+Advertisements are coalesced deterministically by node ID and stable service
+name. DNS-SD removal removes only that presence, while a contained periodic
+sweep expires advertisements that exceed the configured stale interval. A
+node disappears after its final presence is removed. Manual manifests can be
+added as non-expiring static identities without starting DNS-SD.
+
+Discovery retrieves only bounded UTF-8 JSON over HTTP(S), rejects duplicate
+JSON keys, and validates the closed Phase 9H manifest, protocol, and advertised
+node identity. Status exposes `DISCOVERED` failures or the validated
+`IDENTIFIED` identity, manifest, location, timestamps, duplicate advertisement
+IDs, and discovery-service health in ordinary JSON. The full lifecycle names
+are reserved, but Phase 9I never advances to `PAIRED`, `AUTHORIZED`, or
+`ACTIVE`. It does not call `MedullaNodeDirectory`, register a provider or
+capability, bind a transport, grant a permission, or execute remote code.
 
 Phase 7A introduces the small, runtime-checkable `StateStore` boundary between
 Entity state access and storage. Ordinary state is explicitly separated into

@@ -30,6 +30,7 @@ api = ["fastapi>=0.115,<1", "pydantic>=2,<3"]
 websocket = ["websockets>=14,<17"]
 mqtt = ["aiomqtt>=2,<3"]
 serial = ["pyserial>=3.5,<4"]
+discovery = ["zeroconf>=0.148,<1"]
 test = ["fastapi>=0.115,<1", "httpx>=0.27,<1", "pydantic>=2,<3", "websockets>=14,<17"]
 
 [project.scripts]
