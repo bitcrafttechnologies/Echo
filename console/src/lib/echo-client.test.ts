@@ -8,6 +8,7 @@ import {
   fetchConfiguration,
   fetchLogs,
   fetchProviders,
+  fetchMedullaNodes,
   fetchRestartOperation,
   fetchRuntimeStatus,
   fetchReplayStatus,
@@ -20,6 +21,8 @@ import {
   recordedSignalId,
   requestRuntimeRestart,
   setProviderMode,
+  decideMedullaNode,
+  authorizeMedullaNode,
   sendUserMessage,
   startReplay,
   signalFromEvent,
@@ -122,6 +125,25 @@ describe('Echo API client', () => {
       headers: { accept: 'application/json', 'content-type': 'application/json' },
       body: JSON.stringify({ mode: 'offline' })
     });
+  });
+
+  it('keeps node approval and requirement authorization as separate API operations', async () => {
+    const node = { node_id: 'macbook-home', negotiation_state: 'awaiting_approval' };
+    const fetcher = vi.fn(async () => new Response(JSON.stringify(node), {
+      status: 200, headers: { 'content-type': 'application/json' }
+    }));
+    await fetchMedullaNodes(fetcher, '/api/');
+    await decideMedullaNode(fetcher, 'macbook-home', 'approve', 'operator chose it', '/api/');
+    await authorizeMedullaNode(fetcher, 'macbook-home', {}, '/api/');
+    expect(fetcher).toHaveBeenNthCalledWith(1, '/api/medulla/nodes', {
+      headers: { accept: 'application/json' }
+    });
+    expect(fetcher).toHaveBeenNthCalledWith(2, '/api/medulla/nodes/macbook-home/decision', expect.objectContaining({
+      method: 'POST', body: JSON.stringify({ decision: 'approve', reason: 'operator chose it' })
+    }));
+    expect(fetcher).toHaveBeenNthCalledWith(3, '/api/medulla/nodes/macbook-home/authorization', expect.objectContaining({
+      method: 'POST', body: JSON.stringify({ authorization: {} })
+    }));
   });
 
   it('reloads configuration only through the explicit management operation', async () => {

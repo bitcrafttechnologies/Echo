@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Mapping
+from contextlib import asynccontextmanager
 import logging
 import os
 from pathlib import Path
+import re
 from typing import Any
 
 from echo.config import ConfigurationError, DEFAULT_CONFIG_PATH, EchoConfig, load_config
@@ -95,6 +97,7 @@ def register_user_message_handler(
     provider_router: ProviderRouter,
     *,
     character_guidance: str | None = None,
+    node_host: Any | None = None,
 ) -> None:
     """Route Console chat Signals through inference and record the reply."""
 
@@ -119,6 +122,21 @@ def register_user_message_handler(
                 environment=environment,
             ),
         )
+        medulla_observations: list[dict[str, Any]] = []
+        if node_host is not None:
+            for action in _medulla_actions_for_prompt(text.strip(), signal.metadata):
+                try:
+                    result = await node_host.execute_capability(action)
+                    medulla_observations.append(
+                        {"capability": action.type, "result": result.result}
+                    )
+                except Exception as error:
+                    medulla_observations.append(
+                        {"capability": action.type, "error": str(error)}
+                    )
+        inference_context = character_context.to_dict()
+        if medulla_observations:
+            inference_context["medulla_observations"] = medulla_observations
         result = await provider_router.infer(
             InferenceRequest(
                 prompt=text.strip(),
@@ -130,7 +148,7 @@ def register_user_message_handler(
                     "If no direct-experience memory supports an event, say that the "
                     "Entity does not have that lived experience."
                 ).strip(),
-                context=character_context.to_dict(),
+                context=inference_context,
                 metadata={
                     "entity_id": entity.id,
                     "signal_id": signal.id,
@@ -188,6 +206,42 @@ def register_user_message_handler(
         return action
 
 
+def _medulla_actions_for_prompt(text: str, metadata: Mapping[str, Any]) -> tuple[Any, ...]:
+    """Conservative read-only context gathering for an already authorized node."""
+
+    from echo.core.action import Action
+
+    lowered = text.lower()
+    actions: list[Action] = []
+    keywords = (
+        ("battery", "battery.status"),
+        ("system health", "system.health"),
+        ("date", "system.datetime"),
+        ("time", "system.datetime"),
+        ("location", "location.current"),
+        ("weather", "weather.current"),
+    )
+    for keyword, capability in keywords:
+        if re.search(rf"\b{re.escape(keyword)}\b", lowered) and not any(item.type == capability for item in actions):
+            actions.append(Action(type=capability))
+    urls = re.findall(r"https://[^\s<>\]\[\)\(\"']+", text)
+    for url in urls[:2]:
+        actions.append(Action(type="web.fetch", parameters={"url": url.rstrip(".,;:")}))
+    if any(word in lowered for word in ("search", "research", "look up")) and not urls:
+        query = metadata.get("search_query", text)
+        if isinstance(query, str) and query.strip():
+            actions.append(Action(type="web.search", parameters={"query": query.strip()}))
+    file_path = metadata.get("file_path")
+    if not isinstance(file_path, str):
+        quoted_path = re.search(r"\b(?:read|open|inspect)\s+(?:the\s+file\s+)?[\"'](/[^\"']+)[\"']", text, re.I)
+        plain_path = re.search(r"\b(?:read|open|inspect)\s+(?:the\s+file\s+)?(/\S+)", text, re.I)
+        matched_path = quoted_path or plain_path
+        file_path = matched_path.group(1) if matched_path else None
+    if isinstance(file_path, str) and file_path:
+        actions.append(Action(type="filesystem.read", parameters={"path": file_path}))
+    return tuple(actions[:6])
+
+
 def _clone_entity_generation(entity: Entity) -> Entity:
     """Reconstruct one Entity while retaining provider-independent character."""
 
@@ -209,13 +263,23 @@ def build_host(
     bit_directory = selected_entity_seed_path("bit", config_path=config_path)
     seed = load_entity_seed(bit_directory)
     entity, persistence_resources = _entity_with_persistence(seed, config)
+    runtime = config.create_runtime([entity])
     router = config.create_provider_router()
+    node_host = None
+    if config.medulla.enabled:
+        from echo.medulla import EchoNodeWebSocketHost
+
+        node_host = EchoNodeWebSocketHost(
+            config.medulla.endpoint,
+            signal_target=runtime,
+            approval_mode=config.discovery.approval_mode,
+        )
     register_user_message_handler(
         entity,
         router,
         character_guidance=seed.character_guidance,
+        node_host=node_host,
     )
-    runtime = config.create_runtime([entity])
     manager = RuntimeConfigurationManager(
         config,
         runtime,
@@ -268,8 +332,21 @@ def build_host(
         provider_router=router,
         configuration_manager=manager,
         restart_coordinator=coordinator,
+        node_host=node_host,
     )
-    return create_app(service), config, runtime, service
+    lifespan = None
+    if node_host is not None:
+        @asynccontextmanager
+        async def medulla_lifespan(_app: Any):
+            await node_host.start()
+            try:
+                yield
+            finally:
+                await node_host.stop()
+
+        lifespan = medulla_lifespan
+    app = create_app(service, lifespan=lifespan)
+    return app, config, runtime, service
 
 
 def main(argv: list[str] | None = None) -> int:

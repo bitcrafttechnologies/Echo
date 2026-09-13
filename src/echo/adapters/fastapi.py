@@ -64,6 +64,19 @@ class StateUpdateBody(BaseModel):
     values: dict[str, Any]
 
 
+class MedullaDecisionBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision: Literal["approve", "decline", "block", "reconsider", "unblock"]
+    reason: str | None = Field(default=None, min_length=1)
+
+
+class MedullaAuthorizationBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    authorization: dict[str, Any] = Field(default_factory=dict)
+
+
 class InferenceBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -216,13 +229,13 @@ async def _stream_events(
         subscription.close()
 
 
-def create_app(service: RuntimeServiceProtocol) -> FastAPI:
+def create_app(service: RuntimeServiceProtocol, *, lifespan: Any | None = None) -> FastAPI:
     """Create an HTTP adapter around an existing runtime service."""
 
     if not isinstance(service, RuntimeServiceProtocol):
         raise TypeError("service must implement RuntimeServiceProtocol")
 
-    app = FastAPI(title="Echo Runtime API", version="0.9.5")
+    app = FastAPI(title="Echo Runtime API", version="0.9.5", lifespan=lifespan)
 
     @app.exception_handler(RuntimeServiceError)
     async def handle_runtime_service_error(
@@ -318,6 +331,22 @@ def create_app(service: RuntimeServiceProtocol) -> FastAPI:
     @app.patch("/providers/mode", tags=["providers"])
     async def set_provider_mode(body: ProviderModeBody) -> dict[str, Any]:
         return _as_dict(await service.set_provider_mode(body.mode))
+
+    @app.get("/medulla/nodes", tags=["medulla"])
+    async def list_medulla_nodes() -> list[dict[str, Any]]:
+        return list(service.get_medulla_nodes())
+
+    @app.get("/medulla/nodes/{node_id}", tags=["medulla"])
+    async def inspect_medulla_node(node_id: str) -> dict[str, Any]:
+        return service.inspect_medulla_node(node_id)
+
+    @app.post("/medulla/nodes/{node_id}/decision", tags=["medulla"])
+    async def decide_medulla_node(node_id: str, body: MedullaDecisionBody) -> dict[str, Any]:
+        return await service.decide_medulla_node(node_id, body.decision, body.reason)
+
+    @app.post("/medulla/nodes/{node_id}/authorization", tags=["medulla"])
+    async def authorize_medulla_node(node_id: str, body: MedullaAuthorizationBody) -> dict[str, Any]:
+        return await service.authorize_medulla_node(node_id, body.authorization)
 
     @app.post("/inference", tags=["providers"])
     async def infer(body: InferenceBody) -> dict[str, Any]:

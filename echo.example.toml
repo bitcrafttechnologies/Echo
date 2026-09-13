@@ -56,3 +56,12 @@ api_url = "http://127.0.0.1:8000"
 request_timeout_seconds = 3
 poll_interval_seconds = 1
 session_name = "echo-core"
+
+[discovery]
+# Controls candidate decisions only; scope authorization remains separate.
+approval_mode = "manual"
+
+[medulla]
+# Explicit node listener. This is connection transport, not automatic discovery.
+enabled = true
+endpoint = "ws://127.0.0.1:8765/medulla"

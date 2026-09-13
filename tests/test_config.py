@@ -42,6 +42,8 @@ class EchoConfigurationTests(unittest.TestCase):
         self.assertTrue(config.persistence.enabled)
         self.assertEqual(config.persistence.database_path.name, "echo.sqlite3")
         self.assertEqual(config.console.api_url, "http://127.0.0.1:8000")
+        self.assertFalse(config.medulla.enabled)
+        self.assertEqual(config.medulla.endpoint, "ws://127.0.0.1:8765/medulla")
 
         runtime = config.create_runtime()
         router = config.create_provider_router()

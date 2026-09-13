@@ -1747,8 +1747,50 @@ automatic Action-history execution, capability routing, discovery, trust, or
 cognition. Project-owned Entity files and application-specific Signal/Action
 schemas remain outside the library wheel.
 
-Phase 9 branches use patch versions in order: 9A is `0.9.1`, 9B is `0.9.2`,
-and subsequent lettered subphases continue the sequence.
+Phase 9A through 9E use patch versions in order. The standalone node line uses
+`0.9-node-0.#`: Phase 9I-A is `0.9-node-0.1`, and Phase 9I-B is
+`0.9-node-0.2`, Phase 9I-C is `0.9-node-0.3`, and Phase 9I-D is
+`0.9-node-0.4`, Phase 9I-E is `0.9-node-0.5`, Phase 9I-F is
+`0.9-node-0.6`, Phase 9I-G is `0.9-node-0.7`, and Phase 9I-H is
+`0.9-node-0.8`. Phase 9I-I is `0.9-node-0.9`.
+
+Phase 9I-B gives the standalone node a strict declarative configuration and an
+offline Phase 9H-compatible manifest builder. The `medulla-node init`,
+`validate`, and `manifest` commands create, validate, and inspect exactly what
+the node would advertise without discovery, networking, or negotiation.
+
+Phase 9I-C (`0.9-node-0.3`) adds the asynchronous Medulla adapter contract,
+adapter lifecycle ownership, manifest aggregation, fail-closed Action routing,
+resource validation, structured results, and normalized Signal provenance. A
+deterministic in-memory development adapter is the reference implementation.
+
+Phase 9I-D (`0.9-node-0.4`) connects the standalone node to an explicitly
+configured Echo WebSocket listener. It reuses the existing wire protocol for
+manifest announcement, heartbeat health, Echo Actions, structured results, and
+normalized Signals, with bounded reconnect behavior and no discovery or trust
+state.
+
+Phase 9I-E (`0.9-node-0.5`) adds declarative connection requirements for
+scoped Entity identity, metadata, credential descriptors, permissions,
+protocol features, Entity capabilities, and sessions. Echo parses and exposes
+these requirements while negotiation stops at `AWAITING_APPROVAL`; no Entity
+object, private state, credential value, grant, or autonomous authorization is
+sent.
+
+Phase 9I-F through 9I-H complete the software-side connection contract:
+manual and autonomous approval remain distinct from deterministic requirement
+authorization; capability registration and Action/Signal flow are gated on
+authenticated `ACTIVE`; declines can be reevaluated; blocks suppress offers;
+credentials use redacted `secret://` references; lifecycle decisions remain
+visible; and an explicitly loaded Raspberry Pi GPIO adapter supplies physical
+output Actions and input Signals. Phase 9J remains blocked on a recorded run of
+the physical validation procedure.
+
+Phase 9I-I (`0.9-node-0.9`) adds separate MacBook embodiment and open-web
+research node packages. Echo exposes manual approval and separate scope
+authorization through the management API, TUI, and web Console, and can attach
+bounded observations from already-active read-only capabilities to relevant
+user inference requests. This does not introduce automatic discovery.
 
 ⸻
 

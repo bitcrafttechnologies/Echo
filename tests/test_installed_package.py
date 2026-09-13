@@ -54,6 +54,57 @@ class InstalledPackageTests(unittest.TestCase):
                 text=True,
             )
 
+            scripts = environment / ("Scripts" if os.name == "nt" else "bin")
+            node_cli = scripts / ("medulla-node.exe" if os.name == "nt" else "medulla-node")
+            node_help = subprocess.run(
+                [str(node_cli), "--help"],
+                env=clean_environment,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(node_help.returncode, 0, node_help.stderr)
+            self.assertIn("usage: medulla-node", node_help.stdout)
+
+            for executable, usage in (
+                ("macbook-medulla-node", "usage: macbook-medulla-node"),
+                ("web-medulla-node", "usage: web-medulla-node"),
+            ):
+                script = scripts / (f"{executable}.exe" if os.name == "nt" else executable)
+                result = subprocess.run([str(script), "--help"], env=clean_environment, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(usage, result.stdout)
+
+            node_project = root / "node-consumer"
+            node_project.mkdir()
+            for arguments in (("init",), ("validate",), ("manifest",)):
+                node_command = subprocess.run(
+                    [str(node_cli), *arguments],
+                    cwd=node_project,
+                    env=clean_environment,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(node_command.returncode, 0, node_command.stderr)
+            self.assertIn("Node: Workshop Pi", node_command.stdout)
+            self.assertIn("Protocol: medulla/1", node_command.stdout)
+
+            boundary = subprocess.run(
+                [
+                    str(python),
+                    "-c",
+                    "import sys, medulla_node; "
+                    "import macbook_medulla_node, web_medulla_node; "
+                    "assert not any(n == 'echo' or n.startswith('echo.') for n in sys.modules)",
+                ],
+                env=clean_environment,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(boundary.returncode, 0, boundary.stderr)
+
             project = root / "consumer"
             entity = project / "entities" / "echo"
             (entity / "prompts").mkdir(parents=True)

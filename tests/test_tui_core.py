@@ -64,6 +64,7 @@ class TuiCoreTests(unittest.IsolatedAsyncioTestCase):
             "tasks": "TASK INSPECTOR",
             "entity": "ENTITY INSPECTOR",
             "providers": "PROVIDER ROUTING",
+            "medulla": "MEDULLA NODES",
             "configuration": "EFFECTIVE CONFIGURATION",
             "logs": "STRUCTURED LOGS",
         }
@@ -143,7 +144,7 @@ class TuiCoreTests(unittest.IsolatedAsyncioTestCase):
         registry = default_registry()
         self.assertEqual(
             [surface.key for surface in registry.list()],
-            ["overview", "chat", "signals", "tasks", "entity", "providers", "configuration", "logs"],
+            ["overview", "chat", "signals", "tasks", "entity", "providers", "medulla", "configuration", "logs"],
         )
         self.assertEqual(registry.catalog()[2]["capabilities"], ["list", "inspect", "emit"])
 
@@ -154,9 +155,9 @@ class TuiCoreTests(unittest.IsolatedAsyncioTestCase):
         manager = TmuxSessionManager(project_root=Path("/echo"))
         commands = manager.commands("/usr/bin/tmux")
         text = "\n".join(" ".join(command) for command in commands)
-        for window in ("dashboard", "chat", "signals", "tasks", "entity", "providers", "configuration", "logs", "files", "shell"):
+        for window in ("dashboard", "chat", "signals", "tasks", "entity", "providers", "medulla", "configuration", "logs", "files", "shell"):
             self.assertIn(window, text)
-        for key in range(1, 9):
+        for key in range(1, 10):
             self.assertIn(f"M-{key}", text)
         self.assertIn("--no-tmux", text)
         self.assertIn("/echo/entities", text)

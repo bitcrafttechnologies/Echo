@@ -2,7 +2,8 @@
 
 ## Current implementation
 
-Echo through Phase 9I plus `0.9.2-package_prep` and the `0.4-tui_core`
+Echo through the Phase 9I-I implementation on `0.9-node-0.9`, plus
+`0.9.2-package_prep` and the `0.4-tui_core`
 interface track consists of a
 minimal, standard-library Python kernel, an optional FastAPI HTTP and WebSocket
 adapter, and a separate SvelteKit development console shell. The documented,
@@ -282,8 +283,8 @@ errors as protocol or connection failures. Serial and MQTT continue using the
 same safe wire envelope; Phase 9H adds no new socket, broker, framing, pairing,
 discovery, or trust implementation.
 
-Phase 9I adds a failure-contained discovery and identification layer for
-remote Medulla Nodes. `MDNSDiscoveryBackend` optionally browses the
+An inherited Echo-side discovery and identification layer exists for remote
+Medulla Nodes. `MDNSDiscoveryBackend` optionally browses the
 `_medulla._tcp.local.` DNS-SD service through `python-zeroconf`, resolves node
 ID, `medulla/1` protocol, addresses, port, and manifest location, and passes a
 transport-neutral advertisement into `MedullaNodeDiscovery`. The dependency is
@@ -301,7 +302,7 @@ JSON keys, and validates the closed Phase 9H manifest, protocol, and advertised
 node identity. Status exposes `DISCOVERED` failures or the validated
 `IDENTIFIED` identity, manifest, location, timestamps, duplicate advertisement
 IDs, and discovery-service health in ordinary JSON. The full lifecycle names
-are reserved, but Phase 9I never advances to `PAIRED`, `AUTHORIZED`, or
+are reserved, but this discovery layer never advances to `PAIRED`, `AUTHORIZED`, or
 `ACTIVE`. It does not call `MedullaNodeDirectory`, register a provider or
 capability, bind a transport, grant a permission, or execute remote code.
 
@@ -1035,11 +1036,52 @@ execution remains deferred to Medulla.
 - Phase 9H (`0.9-medulla_node-0.3`): versioned remote-node manifests, typed
   endpoint/Signal/resource/health/pairing descriptions, registry lifecycle,
   disconnect disablement, reconnect restoration, and WebSocket manifest hooks.
+- Phase 9I-A (`0.9-node-0.1`): top-level `medulla_protocol` and `medulla_node`
+  package boundaries, shared Phase 9H-compatible models, inert process
+  lifecycle, and an installable `medulla-node` CLI. Importing either standalone
+  package does not import Echo.
+- Phase 9I-B (`0.9-node-0.2`): safe declarative YAML configuration, offline
+  Phase 9H manifest construction from configuration and registered adapter
+  descriptions, duplicate detection, and `medulla-node init`, `validate`, and
+  `manifest` commands. No command connects to or discovers anything.
+- Phase 9I-C (`0.9-node-0.3`): asynchronous hardware-neutral adapter contract,
+  lifecycle ownership, manifest aggregation, deterministic capability routing,
+  resource checks, structured Action outcomes, and provenance-rich normalized
+  Signals. `DevelopmentAdapter` supplies `dev.echo`, `counter.increment`,
+  `counter.reset`, `counter.changed`, and `counter.main` entirely in memory.
+- Phase 9I-D (`0.9-node-0.4`): a standalone reconnecting WebSocket client
+  configured with an explicit Echo endpoint, session hello, real Phase 9H
+  manifest and health announcement, bounded heartbeat exchange, Action/result
+  correlation, normalized Signal forwarding, and an Echo-side node listener.
+  Transport reachability remains distinct from authorization lifecycle state.
+- Phase 9I-E (`0.9-node-0.5`): manifests carry closed, declarative requirements
+  for identity scopes, metadata, credential descriptors, permissions, protocol
+  features, Entity capabilities, and sessions. Echo records negotiation from
+  transport connection through `AWAITING_APPROVAL`; it sends no Entity data,
+  credential values, grants, or automatic authorization.
+- Phase 9I-F (`0.9-node-0.6`): manual approve/decline/block decisions, explicit
+  reconsideration, a distinct approval wire step, deterministic requirement
+  authorization, authentication acknowledgment, lifecycle Signals, and
+  bilateral Action/Signal gating until `ACTIVE`.
+- Phase 9I-G (`0.9-node-0.7`): autonomous mode delegates only the usefulness
+  decision to an explicit evaluator. A separate exact-node authorization
+  policy controls scopes and secret references. Declines remain visible and
+  reconsiderable; missing evaluators never imply approval.
+- Phase 9I-H (`0.9-node-0.8`): `secret://` references, redacted inspection,
+  expanded lifecycle events, duplicate and changed-identity containment,
+  interrupted-Action failure, `medulla-node status`, and an optional GPIO
+  adapter. Its LED/button path passes with an injected hardware backend.
+- Phase 9I-I (`0.9-node-0.9`): separate MacBook and allowlisted web research
+  node packages, bounded host telemetry, conservative prompt context gathering,
+  an explicit Echo node listener, public management endpoints, and matching
+  TUI/web candidate decision and authorization controls.
 
 ## In progress
 
-Nothing. Phase 9H is complete. The Phase 1F
-TUI integration requirement remains active across all later phases.
+Physical Raspberry Pi validation remains. The exact wiring and evidence
+procedure is in `docs/RASPBERRY_PI_VALIDATION.md`. Phase 9J must not start until
+that real-hardware run passes. The Phase 1F TUI integration requirement remains
+active across all later phases.
 
 ## Known issues
 
@@ -1470,9 +1512,9 @@ These are roadmap deferrals, not missing Phase 9H acceptance criteria.
 
 ## Next task
 
-Stop after Phase 9H. Do not begin Phase 9I, add active discovery or implicit
-Action execution, or implement pairing, authorization policy, and trust
-without separate authorization.
+Stop before Phase 9J. Run and record the physical Raspberry Pi validation;
+do not add automatic discovery until it passes. Do not silently expand identity
+disclosure, secret resolution, execution authority, or trust.
 
 ## Important files
 

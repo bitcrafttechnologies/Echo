@@ -31,14 +31,22 @@ websocket = ["websockets>=14,<17"]
 mqtt = ["aiomqtt>=2,<3"]
 serial = ["pyserial>=3.5,<4"]
 discovery = ["zeroconf>=0.148,<1"]
+gpio = ["gpiozero>=2,<3"]
 test = ["fastapi>=0.115,<1", "httpx>=0.27,<1", "pydantic>=2,<3", "websockets>=14,<17"]
 
 [project.scripts]
 echoc = "echo.cli:main"
+medulla-node = "medulla_node.cli:main"
+macbook-medulla-node = "macbook_medulla_node.cli:main"
+web-medulla-node = "web_medulla_node.cli:main"
 
 [tool.setuptools.package-data]
 "echo" = ["py.typed"]
 "echo.tui" = ["assets/*.txt"]
+"medulla_protocol" = ["py.typed"]
+"medulla_node" = ["py.typed"]
+"macbook_medulla_node" = ["py.typed"]
+"web_medulla_node" = ["py.typed"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -358,6 +358,58 @@ the Echo command prompt. New application startup should construct this router
 through `EchoConfig.create_provider_router()` so configuration is validated
 before providers are created.
 
+## Standalone Medulla Node manifest
+
+The `0.9-node-0.2` line can create and inspect a complete node declaration
+without starting a network connection:
+
+```console
+medulla-node init
+medulla-node validate
+medulla-node manifest
+medulla-node manifest --json
+```
+
+These commands use `medulla-node.yaml` by default; an explicit path may follow
+the command. The restricted YAML loader and Phase 9H manifest validator accept
+declarative JSON-safe data only. See `docs/MEDULLA.md` for the schema and
+security boundary.
+
+Phase 9I-C (`0.9-node-0.3`) adds the hardware-neutral adapter runtime and an
+in-memory `DevelopmentAdapter`. Its echo and counter capabilities provide a
+deterministic Action-to-Signal integration target without Echo, networking, or
+physical hardware.
+
+Phase 9I-D (`0.9-node-0.4`) adds a reconnecting WebSocket session to an
+explicitly configured Echo listener. Add an `echo` endpoint to the generated
+configuration, then run `medulla-node run --development`. The node announces
+its real manifest, exchanges bounded heartbeats, receives Actions, and forwards
+adapter Signals without performing discovery or claiming authorization.
+
+Phase 9I-E (`0.9-node-0.5`) adds declarative manifest requirements for scoped
+Entity identity, metadata, credential descriptors, permissions, protocol
+features, Entity capabilities, and sessions. Echo can inspect them and records
+negotiation through `AWAITING_APPROVAL`; it does not disclose identity data,
+credentials, or grant access automatically.
+
+Phase 9I-F through 9I-H (`0.9-node-0.6`–`0.9-node-0.8`) add manual and
+contextual autonomous approval, deterministic scope authorization,
+`secret://` credential references, authenticated `ACTIVE` gating, redacted
+lifecycle inspection, `medulla-node status`, and an optional Raspberry Pi GPIO
+adapter. Autonomous means Echo may approve or decline for a recorded reason;
+it never implies blanket approval or authority to release requested data.
+
+The GPIO contract is covered with an injected backend. Physical Pi acceptance
+must follow [the Raspberry Pi validation runbook](docs/RASPBERRY_PI_VALIDATION.md)
+before Phase 9J automatic discovery begins.
+
+For the read-only MacBook embodiment node, allowlisted web research node, and
+manual TUI/web approval workflow, see
+[Medulla Node development](docs/MEDULLA_NODE_DEVELOPMENT.md).
+These packages are released on `0.9-node-0.9` as `macbook-medulla-node` and
+`web-medulla-node`; they share the protocol/runtime boundary without importing
+Echo cognition.
+
 ## Local Medulla source demo
 
 Phase 9B includes optional one-shot clock, current-weather, and headline

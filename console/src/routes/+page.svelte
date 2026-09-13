@@ -10,6 +10,7 @@
   import ProviderInspector from '$lib/ProviderInspector.svelte';
   import ConfigurationInspector from '$lib/ConfigurationInspector.svelte';
   import RestartControl from '$lib/RestartControl.svelte';
+  import MedullaNodeInspector from '$lib/MedullaNodeInspector.svelte';
 
   import {
     eventStreamUrl,
@@ -23,7 +24,7 @@
     type SignalHistoryEntry
   } from '$lib/echo-client';
 
-  const navigation = ['Overview', 'Signals', 'Tasks', 'Entity', 'Providers', 'Configuration', 'Logs', 'Chat'] as const;
+  const navigation = ['Overview', 'Signals', 'Tasks', 'Entity', 'Providers', 'Medulla Nodes', 'Configuration', 'Logs', 'Chat'] as const;
   type Section = (typeof navigation)[number];
   type ConnectionState = 'connecting' | 'connected' | 'disconnected';
 
@@ -320,6 +321,8 @@
       <EntityInspector {apiBase} {eventRevision} />
     {:else if activeSection === 'Providers'}
       <ProviderInspector {apiBase} />
+    {:else if activeSection === 'Medulla Nodes'}
+      <MedullaNodeInspector {apiBase} {eventRevision} />
     {:else if activeSection === 'Configuration'}
       <ConfigurationInspector {apiBase} />
     {:else if activeSection === 'Logs'}
