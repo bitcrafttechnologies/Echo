@@ -15,6 +15,7 @@ from echo.core.action import Action
 from echo.core.action_history import ActionHistory, ActionHistoryEntry, ActionStatus
 from echo.core.entity import Entity
 from echo.core.inspection import json_safe
+from echo.core.recording import RuntimeLinkage, SignalCaptureSink
 from echo.core.runtime_log import (
     InMemoryLogSink,
     LogSink,
@@ -82,6 +83,8 @@ class Runtime:
         self._current_task: Task | None = None
         self._current_action_ids: set[str] | None = None
         self._routing_tasks: dict[str, list[Task]] = {}
+        self._routing_action_ids: dict[str, list[str]] = {}
+        self._signal_capture_sink: SignalCaptureSink | None = None
         self._active_task_runs: dict[
             str, tuple[asyncio.Task[Any], asyncio.Event]
         ] = {}
@@ -235,6 +238,20 @@ class Runtime:
             metadata=deepcopy(metadata),
         )
 
+    def report_recording_lifecycle(
+        self,
+        event_type: RuntimeEventType,
+        metadata: dict[str, Any],
+    ) -> None:
+        """Publish a detached recording start or stop observation."""
+
+        if event_type not in {
+            RuntimeEventType.RECORDING_STARTED,
+            RuntimeEventType.RECORDING_STOPPED,
+        }:
+            raise ValueError("recording lifecycle event type is required")
+        self._log(event_type, metadata=deepcopy(metadata))
+
     def register(self, entity: Entity) -> Entity:
         if entity.id in self.entities and self.entities[entity.id] is not entity:
             raise ValueError(f"entity id is already registered: {entity.id}")
@@ -244,6 +261,21 @@ class Runtime:
 
     def get_entity(self, entity_id: str) -> Entity | None:
         return self.entities.get(entity_id)
+
+    def set_signal_capture_sink(self, sink: SignalCaptureSink) -> None:
+        """Attach the single non-blocking Signal recording hook."""
+
+        if not isinstance(sink, SignalCaptureSink):
+            raise TypeError("signal capture sink must implement SignalCaptureSink")
+        if self._signal_capture_sink is not None and self._signal_capture_sink is not sink:
+            raise RuntimeError("a Signal capture sink is already attached")
+        self._signal_capture_sink = sink
+
+    def clear_signal_capture_sink(self, sink: SignalCaptureSink) -> None:
+        """Detach a hook only when it is the currently attached instance."""
+
+        if self._signal_capture_sink is sink:
+            self._signal_capture_sink = None
 
     def subscribe_events(
         self,
@@ -606,6 +638,7 @@ class Runtime:
             del self.signals[0]
         self.signal_history.record(signal)
         self._routing_tasks[signal.id] = []
+        self._routing_action_ids[signal.id] = []
         entity_ids: list[str] = []
         handler_count = 0
         routing_error: BaseException | None = None
@@ -633,6 +666,7 @@ class Runtime:
             raise
         finally:
             routed_tasks = self._routing_tasks.pop(signal.id, [])
+            routed_action_ids = tuple(self._routing_action_ids.pop(signal.id, []))
             statuses = {task.id: task.status.value for task in routed_tasks}
             if routing_error is not None:
                 status = (
@@ -647,7 +681,7 @@ class Runtime:
             else:
                 status = "completed" if handler_count else "unhandled"
                 error_data = None
-            self.signal_history.set_routing_result(
+            history_entry = self.signal_history.set_routing_result(
                 signal.id,
                 SignalRoutingResult(
                     status=status,
@@ -658,6 +692,33 @@ class Runtime:
                     error=error_data,
                 ),
             )
+            sink = self._signal_capture_sink
+            if sink is not None and history_entry is not None:
+                task_ids = tuple(task.id for task in routed_tasks)
+                snapshot = Signal(
+                    id=history_entry.id,
+                    type=history_entry.type,
+                    source=history_entry.source,
+                    timestamp=history_entry.timestamp,
+                    payload=history_entry.payload,
+                    metadata=history_entry.metadata,
+                )
+                try:
+                    sink.capture(
+                        snapshot,
+                        linkage=RuntimeLinkage(
+                            runtime_id=self.id,
+                            entity_ids=tuple(entity_ids),
+                            task_ids=task_ids,
+                            action_ids=routed_action_ids,
+                        ),
+                    )
+                except Exception as error:
+                    self.report_error(
+                        "signal_recording.capture",
+                        error,
+                        signal_id=signal.id,
+                    )
 
     async def _run_handler(self, entity: Entity, handler: Any, signal: Signal) -> None:
         task = Task(
@@ -751,6 +812,8 @@ class Runtime:
                 if isinstance(signal_data, dict):
                     signal_id = signal_data.get("id")
             self.action_history.record(action, signal_id=signal_id)
+            if signal_id in self._routing_action_ids:
+                self._routing_action_ids[signal_id].append(action.id)
             if self._current_action_ids is not None:
                 self._current_action_ids.add(action.id)
             metadata = {

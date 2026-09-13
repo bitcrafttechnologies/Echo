@@ -113,6 +113,41 @@ export type SignalHistoryEntry = {
   routing_result: SignalRoutingResult;
 };
 
+export type ReplayTiming = 'realtime' | 'accelerated' | 'immediate' | 'manual_step';
+
+export type ReplayStatus = {
+  replay_id: string;
+  runtime_id: string;
+  recording_path: string;
+  recording_session_id: string;
+  mode: 'signal' | 'sequential';
+  timing: ReplayTiming;
+  multiplier: number | null;
+  safety_policy: 'record_only';
+  state: 'ready' | 'running' | 'completed' | 'cancelled' | 'failed';
+  total_signals: number;
+  next_index: number;
+  remaining_signals: number;
+  started_at: string | null;
+  completed_at: string | null;
+  cancellation_requested: boolean;
+  replayed_signals: Array<{
+    original_signal_id: string;
+    replayed_signal_id: string;
+    original_timestamp: string;
+    received_at: string;
+  }>;
+  error: { type: string; message: string } | null;
+};
+
+export type StartReplayInput = {
+  path: string;
+  mode: 'signal' | 'sequential';
+  signalId?: string;
+  timing: ReplayTiming;
+  multiplier?: number;
+};
+
 export type ActionHistoryEntry = {
   id: string;
   type: string;
@@ -356,6 +391,80 @@ export async function fetchSignalActions(
     throw new Error(`Related Actions request failed (${response.status})`);
   }
   return (await response.json()) as ActionHistoryEntry[];
+}
+
+export async function startReplay(
+  fetcher: typeof fetch,
+  input: StartReplayInput,
+  apiBase = '/api'
+): Promise<ReplayStatus> {
+  const response = await fetcher(`${apiBase.replace(/\/$/, '')}/runtime/replays`, {
+    method: 'POST',
+    headers: { accept: 'application/json', 'content-type': 'application/json' },
+    body: JSON.stringify({
+      path: input.path,
+      mode: input.mode,
+      signal_id: input.signalId,
+      timing: input.timing,
+      multiplier: input.timing === 'accelerated' ? input.multiplier : undefined,
+      safety_policy: 'record_only'
+    })
+  });
+  if (!response.ok) throw await responseError(response, 'Replay could not be started');
+  return (await response.json()) as ReplayStatus;
+}
+
+export async function fetchReplayStatus(
+  fetcher: typeof fetch,
+  replayId: string,
+  apiBase = '/api'
+): Promise<ReplayStatus> {
+  const response = await fetcher(
+    `${apiBase.replace(/\/$/, '')}/runtime/replays/${encodeURIComponent(replayId)}`,
+    { headers: { accept: 'application/json' } }
+  );
+  if (!response.ok) throw await responseError(response, 'Replay status could not be loaded');
+  return (await response.json()) as ReplayStatus;
+}
+
+export async function advanceReplay(
+  fetcher: typeof fetch,
+  replayId: string,
+  apiBase = '/api'
+): Promise<ReplayStatus> {
+  const response = await fetcher(
+    `${apiBase.replace(/\/$/, '')}/runtime/replays/${encodeURIComponent(replayId)}/step`,
+    { method: 'POST', headers: { accept: 'application/json' } }
+  );
+  if (!response.ok) throw await responseError(response, 'Replay step failed');
+  return (await response.json()) as ReplayStatus;
+}
+
+export async function cancelReplay(
+  fetcher: typeof fetch,
+  replayId: string,
+  apiBase = '/api'
+): Promise<ReplayStatus> {
+  const response = await fetcher(
+    `${apiBase.replace(/\/$/, '')}/runtime/replays/${encodeURIComponent(replayId)}`,
+    { method: 'DELETE', headers: { accept: 'application/json' } }
+  );
+  if (!response.ok) throw await responseError(response, 'Replay cancellation failed');
+  return (await response.json()) as ReplayStatus;
+}
+
+export function replayMetadata(
+  signal: SignalHistoryEntry
+): Record<string, unknown> | null {
+  const value = signal.metadata.echo_replay;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const marker = value as Record<string, unknown>;
+  return marker.replayed === true ? marker : null;
+}
+
+export function recordedSignalId(signal: SignalHistoryEntry): string {
+  const original = replayMetadata(signal)?.original_signal_id;
+  return typeof original === 'string' && original ? original : signal.id;
 }
 
 export async function fetchActions(

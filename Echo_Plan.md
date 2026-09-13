@@ -1671,7 +1671,7 @@ tests must construct a fresh Runtime and store without replaying conversation.
 Use separate memory tables and APIs in the existing SQLite database. Preserve
 authored Entity files as immutable baselines. Direct-experience provenance is a
 trusted Core assertion and cannot be supplied by model prose. Do not add Phase
-8 intentions or Phase 9 reflection/trait mutation here.
+8 intentions or future reflection/trait mutation here.
 
 ⸻
 
@@ -1692,24 +1692,63 @@ attention candidate must not automatically become speech or physical action.
 
 ⸻
 
-Phase 9 — Medulla Transports
+Phase 9 — Medulla Transports, Discovery & World I/O
 
-Start with:
+Build Medulla as Echo's stable boundary between cognition and the outside
+world. Medulla receives external Signals, executes outbound Actions, abstracts
+transports, discovers external capability and Signal-handler descriptions,
+registers capabilities, communicates with devices and nodes, reports connection
+health, validates external data, enforces permission and trust boundaries, and
+normalizes external systems into Echo-native primitives.
 
-local
-WebSocket
-HTTP
+Medulla must remain separate from cognition:
 
-Then:
+WORLD -> Signals -> Medulla -> Echo
 
-MQTT
-serial
-ZeroMQ if justified
+Echo -> Actions -> Medulla -> WORLD
 
-Add reflection, accumulated trait evidence, bounded character updates, and a
-durable audit trail for accepted and rejected changes. Verify that curiosity is
-expressed through attention and goals while safety and behavior policy control
-external action.
+Echo decides meaning, wants, memory, attention, and intended behavior. Medulla
+decides what is connected, what capability is described as available, how to
+communicate with it, whether an Action may be routed to it, and how external
+data becomes a valid Echo Signal. Medulla is MCP-like but not MCP-dependent;
+MCP is one possible future provider or adapter.
+
+Architectural rules:
+
+* Echo Core depends on Signal, Action, Capability, and Resource concepts, never
+  MQTT, WebSocket, serial, HTTP, MCP, GPIO, CAN, or ROS.
+* Medulla performs no cognitive interpretation or behavior selection.
+* External payloads use non-executable decoding and closed validation before
+  becoming typed Signals. Never deserialize arbitrary Python objects.
+* Discovery grants no trust. Preserve the explicit DISCOVERED, IDENTIFIED,
+  PAIRED, AUTHORIZED, and ACTIVE lifecycle.
+* Remote discovery loads descriptions, never executable implementation code.
+  Remote capability implementation remains on the remote node.
+
+Phase 9A (`0.9.1`) formalizes the protocol-neutral asynchronous transport
+contract: start, stop, receive a validated Signal, execute an Action, local
+status, active health, lifecycle semantics, structured errors, and failure
+containment. It adds no concrete transport, discovery, trust workflow,
+capability router, or Runtime execution wiring. See `docs/MEDULLA.md`.
+
+Phase 9B (`0.9.2`) implements `LocalQueueTransport` as the same-process
+reference adapter. Separate bounded inbound and outbound queues have explicit
+reject-newest or drop-oldest overflow behavior, queue-aware health/status, and
+generation-safe shutdown that wakes pending readers and discards stale work.
+It demonstrates both world-to-Signal-to-Echo and Echo-to-Action-to-world flows
+without adding transport supervision or coupling Runtime to Medulla.
+
+The `0.9.2-package_prep` integration branch adds reusable application-level
+supervision before Phase 9C: transport lifecycle ownership, inbound Signal
+pumps through a structural Runtime port, explicit outbound Action dispatch,
+aggregate health, bounded failure observations, a one-Entity composition
+helper, and clean-wheel verification. It does not add a network transport,
+automatic Action-history execution, capability routing, discovery, trust, or
+cognition. Project-owned Entity files and application-specific Signal/Action
+schemas remain outside the library wheel.
+
+Phase 9 branches use patch versions in order: 9A is `0.9.1`, 9B is `0.9.2`,
+and subsequent lettered subphases continue the sequence.
 
 ⸻
 

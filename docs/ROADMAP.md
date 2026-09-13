@@ -273,13 +273,64 @@ Context work already completed in Phases 5–7.
 
 Phase 7E does not add intentions, behavior policy, reflection-driven trait
 mutation, autonomous forgetting, a vector database, or a transcript archive.
-Phase 8 replay and behavior work has not begun.
+Phase 8A's durable Signal format, Phase 8B's live Runtime recording controls,
+Phase 8C's one-Signal, sequential, and step replay, and Phase 8D's realtime,
+accelerated, immediate, manual, and cancellable timing are complete. Behavior
+policy work and Phase 8E Console replay controls are also complete.
+
+### Phase 8E — Console replay controls
+
+- Added host-local recording-path selection to Signal Inspector using the
+  existing replay API; no second browser-side storage model was introduced.
+- Added one-Signal replay from the selected Signal, sequential start/stop,
+  timing and acceleration controls, manual advance, session identity, and live
+  progress.
+- Replayed entries are visibly labeled in live/history lists and detail retains
+  the original recorded ID and timestamp.
+- Completed the Phase 8 character slice with JSON-safe typed intentions,
+  Core-owned behavior arbitration, explicit external-Action authorization,
+  interruptibility checks, and bounded low-priority curiosity goals. Policy
+  approval creates an Action intent but never executes or records it implicitly.
 
 ## Deferred
 
-Remaining runtime APIs, Console, concrete model providers,
-advanced autonomous memory, replay, Medulla transports, edge ML, robotics, and
-advanced task behavior remain deferred to the phases defined in the plan.
+Remaining runtime APIs, concrete model providers, advanced autonomous memory,
+concrete Medulla transports, discovery, trust and capability routing,
+edge ML, robotics, and advanced task behavior remain deferred to the phases
+defined in the plan. Phase 9A's transport abstraction, Phase 9B's local
+reference transport, Phase 9C's WebSocket transport, Phase 9D's optional MQTT
+transport, Phase 9E's serial transport, Phase 9F's capability contract, Phase
+9G's registry/router, and Phase 9H's remote-node protocol are complete.
+
+## Phase 9 Medulla track
+
+- Phase 9A (`0.9.1`): protocol-neutral transport lifecycle, receive/execute
+  boundary, safe validation, structured errors, and status/health — completed.
+- Phase 9B (`0.9.2`): bounded same-process inbound/outbound queues, explicit
+  overflow policy, clean shutdown, and queue health/status — completed.
+- `0.9.2-package_prep`: reusable Medulla supervision, explicit Action
+  dispatch, one-Entity package composition, distribution metadata, and a
+  clean installed-wheel example — completed on the package-preparation branch.
+- Phase 9C (`0.9.3`): versioned safe JSON WebSocket protocol, reconnectable
+  client transport, authentication hook, and connection health — completed.
+- Phase 9D (`0.9.4`): optional MQTT transport, explicit broker configuration,
+  provisional Signal/Action/status topics, reconnects, and health — completed.
+- Phase 9E (`0.9.5`): optional serial transport, embedded-friendly versioned
+  CRC framing, noise isolation, reconnects, and health — completed.
+- Phase 9F (`0.9-medulla_node-0.1`): versioned, transport-neutral capability
+  and provider descriptions, schemas, availability, permissions, risk/effect,
+  timeout expectations, and deterministic collision handling — completed.
+- Phase 9G (`0.9-medulla_node-0.2`): provider-owned inventory and health,
+  capability removal and introspection, permission-gated deterministic routing,
+  timeout enforcement, and structured failure containment — completed.
+- Phase 9H (`0.9-medulla_node-0.3`): closed versioned remote-node manifests,
+  capability/Signal/resource mapping, health and pairing metadata, lifecycle
+  registration, disconnect disablement, and reconnect restoration — completed.
+- Later Phase 9 subphases: additional network/device transports,
+  capability and Signal-handler discovery, registration and routing, node
+  communication, permissions, pairing, authorization, and trust — deferred.
+- Phase 9F begins the Medulla node iteration branch series; subsequent phases
+  increment its final component.
 
 ## Persistent character vertical track
 
@@ -295,9 +346,13 @@ advanced task behavior remain deferred to the phases defined in the plan.
   completed in memory; durable persistence remains deferred.
 - Phase 7: compact, provider-neutral Character Context Builder and retrieval —
   completed; Phase 7E adds durable semantic and character-development memory.
-- Phase 8: proposed intentions, behavior arbitration, and autonomous curiosity.
-- Phase 9: evidence-based, bounded, auditable character evolution.
-- Phase 10 and later: embodiment signals constrain state, goals, and behavior.
+- Phase 8: typed intentions, behavior arbitration, interruptibility, and
+  low-priority curiosity goals — completed.
+- Phase 9: typed reflection evidence, bounded trait updates, accepted/rejected
+  audit records, and graceful-restart continuity — completed. Medulla remains
+  separate and has no character-mutation authority.
+- Phase 10 and later: validated embodiment Signals constrain state, goals, and
+  behavior after crossing the Medulla boundary.
 
 Provider and embodiment continuity tests are acceptance criteria throughout,
 not a final integration exercise.

@@ -29,6 +29,13 @@ app = create_app(runtime_service)
 | --- | --- | --- |
 | `GET` | `/health` | `get_runtime_status()` readiness check |
 | `GET` | `/runtime/status` | `get_runtime_status()` |
+| `POST` | `/runtime/recording` | `start_recording()` |
+| `DELETE` | `/runtime/recording` | `stop_recording()` |
+| `GET` | `/runtime/recording` | `get_recording_status()` |
+| `POST` | `/runtime/replays` | `start_replay()` |
+| `POST` | `/runtime/replays/{replay_id}/step` | `replay_next_step()` |
+| `DELETE` | `/runtime/replays/{replay_id}` | `cancel_replay()` |
+| `GET` | `/runtime/replays/{replay_id}` | `get_replay_status()` |
 | `POST` | `/runtime/restart` | `request_restart()` |
 | `GET` | `/runtime/restart/{operation_id}` | `get_restart_operation()` |
 | `GET` | `/configuration` | `inspect_configuration()` |
@@ -67,6 +74,30 @@ Signal injection accepts `type`, optional `id`, `source`, `timestamp`,
 `payload`, `metadata`, and `priority`. State writes accept an object shaped as
 `{"values": {...}}` and remain constrained by the service's per-Entity
 allowlist.
+
+`POST /runtime/recording` accepts an exclusive output `path`, optional JSON
+object `metadata`, and an optional `durable` boolean. Its `201` response and the
+status/stop endpoints return format and version, Runtime/session IDs, output
+path, timestamps, metadata, enqueued/written/dropped counts, and the latest
+error. `DELETE` first detaches capture, then drains pending writes before
+closing the session. Starting twice or stopping without a session returns
+`409`. Initial file failures return `500`; background failures appear in
+status and as recoverable Runtime error events without failing Signal routing.
+
+`POST /runtime/replays` accepts `path`, a `mode` of `signal`, `sequential`, or
+`step`, the explicit safe `safety_policy` value `record_only`, and a
+`signal_id` only for single-Signal mode. `timing` accepts `immediate`,
+`realtime`, `accelerated`, or `manual_step`; accelerated timing also requires a
+finite positive `multiplier`. Immediate mode finishes before returning,
+realtime and accelerated modes continue in the background, and manual mode
+returns `ready`. Each step request emits exactly one recorded Signal through
+`Runtime.emit()`. `DELETE` cooperatively cancels before the next Signal and
+does not interrupt an active handler. Status includes timing, multiplier,
+cancellation, progress, and the mapping between original and newly assigned
+runtime Signal IDs. Replayed
+Signals use a current receipt timestamp while preserving original identity and
+time under `metadata.echo_replay`. No replay endpoint enables external Action
+execution.
 
 Provider mode writes accept `{"mode":"auto"}`, with `remote`, `lan`, and
 `offline` as the other allowed values. Inference accepts a required `prompt`

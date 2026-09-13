@@ -25,6 +25,8 @@ class RuntimeEventType(StrEnum):
     RUNTIME_STOPPED = "runtime.stopped"
     RUNTIME_RESTARTED = "runtime.restarted"
     CONFIGURATION_RELOAD = "configuration.reload"
+    RECORDING_STARTED = "recording.started"
+    RECORDING_STOPPED = "recording.stopped"
     ERROR = "error"
 
 

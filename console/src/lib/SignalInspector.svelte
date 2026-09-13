@@ -1,8 +1,18 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
+
   import {
+    advanceReplay,
+    cancelReplay,
     fetchSignal,
     fetchSignalActions,
+    fetchReplayStatus,
     filterSignals,
+    recordedSignalId,
+    replayMetadata,
+    startReplay,
+    type ReplayStatus,
+    type ReplayTiming,
     type SignalHistoryEntry
   } from '$lib/echo-client';
 
@@ -22,12 +32,129 @@
   let relatedActionIds: string[] = [];
   let detailLoading = false;
   let detailError = '';
+  let recordingPath = '';
+  let replayTiming: ReplayTiming = 'immediate';
+  let replayMultiplier = 4;
+  let replay: ReplayStatus | null = null;
+  let replayBusy = false;
+  let replayError = '';
+  let replayPollTimer: number | undefined;
 
   $: filters = { type: typeFilter, source: sourceFilter };
   $: filteredLive = filterSignals(liveSignals, filters);
   $: filteredHistory = filterSignals(history, filters);
+  $: selectedReplay = selectedSignal ? replayMetadata(selectedSignal) : null;
   $: if (!selectedSignal && history.length > 0) {
     void selectSignal(history[0]);
+  }
+  $: replayActive = replay?.state === 'ready' || replay?.state === 'running';
+  $: replayPercent = replay && replay.total_signals > 0
+    ? Math.round((replay.next_index / replay.total_signals) * 100)
+    : 0;
+  $: replayInputValid = recordingPath.trim().length > 0 &&
+    (replayTiming !== 'accelerated' || Number.isFinite(replayMultiplier) && replayMultiplier > 0);
+
+  onDestroy(() => {
+    if (replayPollTimer !== undefined) window.clearTimeout(replayPollTimer);
+  });
+
+  function scheduleReplayPoll() {
+    if (replayPollTimer !== undefined) window.clearTimeout(replayPollTimer);
+    if (!replay || replay.state !== 'running') return;
+    replayPollTimer = window.setTimeout(() => {
+      replayPollTimer = undefined;
+      void refreshReplayStatus();
+    }, 300);
+  }
+
+  function acceptReplay(next: ReplayStatus) {
+    const previousIndex = replay?.next_index;
+    const previousState = replay?.state;
+    replay = next;
+    if (
+      next.next_index !== previousIndex ||
+      (next.state !== previousState && ['completed', 'cancelled', 'failed'].includes(next.state))
+    ) {
+      onRefresh();
+    }
+    scheduleReplayPoll();
+  }
+
+  async function refreshReplayStatus() {
+    if (!replay) return;
+    try {
+      acceptReplay(
+        await fetchReplayStatus(window.fetch.bind(window), replay.replay_id, apiBase)
+      );
+    } catch (error) {
+      replayError = error instanceof Error ? error.message : 'Replay status could not be loaded.';
+    }
+  }
+
+  async function startSessionReplay() {
+    if (!replayInputValid || replayActive) return;
+    replayBusy = true;
+    replayError = '';
+    try {
+      acceptReplay(await startReplay(window.fetch.bind(window), {
+        path: recordingPath.trim(),
+        mode: 'sequential',
+        timing: replayTiming,
+        multiplier: replayTiming === 'accelerated' ? replayMultiplier : undefined
+      }, apiBase));
+    } catch (error) {
+      replayError = error instanceof Error ? error.message : 'Replay could not be started.';
+    } finally {
+      replayBusy = false;
+    }
+  }
+
+  async function replaySelectedSignal() {
+    if (!selectedSignal || !recordingPath.trim() || replayActive) return;
+    replayBusy = true;
+    replayError = '';
+    try {
+      acceptReplay(await startReplay(window.fetch.bind(window), {
+        path: recordingPath.trim(),
+        mode: 'signal',
+        signalId: recordedSignalId(selectedSignal),
+        timing: 'immediate'
+      }, apiBase));
+    } catch (error) {
+      replayError = error instanceof Error ? error.message : 'Signal could not be replayed.';
+    } finally {
+      replayBusy = false;
+    }
+  }
+
+  async function nextReplaySignal() {
+    if (!replay || replay.timing !== 'manual_step' || !replayActive) return;
+    replayBusy = true;
+    replayError = '';
+    try {
+      acceptReplay(
+        await advanceReplay(window.fetch.bind(window), replay.replay_id, apiBase)
+      );
+    } catch (error) {
+      replayError = error instanceof Error ? error.message : 'Replay step failed.';
+    } finally {
+      replayBusy = false;
+    }
+  }
+
+  async function stopReplay() {
+    if (!replay || !replayActive) return;
+    replayBusy = true;
+    replayError = '';
+    try {
+      acceptReplay(
+        await cancelReplay(window.fetch.bind(window), replay.replay_id, apiBase)
+      );
+    } catch (error) {
+      replayError = error instanceof Error ? error.message : 'Replay could not be stopped.';
+    } finally {
+      replayBusy = false;
+    }
   }
 
   async function selectSignal(signal: SignalHistoryEntry) {
@@ -101,6 +228,89 @@
     </div>
   </div>
 
+  <section class="replay-console" aria-labelledby="replay-heading">
+    <div class="replay-copy">
+      <p class="eyebrow">Session replay</p>
+      <h3 id="replay-heading">Reproduce captured behavior</h3>
+      <p>Use a recording path available to the Echo host.</p>
+    </div>
+    <div class="replay-fields">
+      <label class="path-field">
+        <span>Recording path</span>
+        <input
+          bind:value={recordingPath}
+          placeholder=".echo/session.jsonl"
+          disabled={replayActive}
+        />
+      </label>
+      <label>
+        <span>Timing</span>
+        <select bind:value={replayTiming} disabled={replayActive}>
+          <option value="immediate">Immediate</option>
+          <option value="realtime">Realtime · 1×</option>
+          <option value="accelerated">Accelerated</option>
+          <option value="manual_step">Manual step</option>
+        </select>
+      </label>
+      {#if replayTiming === 'accelerated'}
+        <label>
+          <span>Multiplier</span>
+          <input
+            class="multiplier-input"
+            type="number"
+            min="0.1"
+            step="0.1"
+            bind:value={replayMultiplier}
+            disabled={replayActive}
+          />
+        </label>
+      {/if}
+      <button
+        class="primary-action"
+        type="button"
+        onclick={startSessionReplay}
+        disabled={!replayInputValid || replayActive || replayBusy}
+      >
+        {replayBusy ? 'Starting…' : 'Start replay'}
+      </button>
+    </div>
+
+    {#if replay}
+      <div class="replay-status" aria-live="polite">
+        <div class="progress-heading">
+          <div>
+            <span class="state-dot state-{replay.state}" aria-hidden="true"></span>
+            <strong>{replay.state}</strong>
+            <span>{replay.recording_session_id}</span>
+          </div>
+          <span>{replay.next_index} / {replay.total_signals} · {replayPercent}%</span>
+        </div>
+        <progress value={replay.next_index} max={Math.max(replay.total_signals, 1)}>
+          {replayPercent}%
+        </progress>
+        <div class="replay-status-meta">
+          <span>{replay.timing.replace('_', ' ')}</span>
+          {#if replay.multiplier}<span>{replay.multiplier}× speed</span>{/if}
+          <span>{replay.remaining_signals} remaining</span>
+          <span>Actions: record only</span>
+        </div>
+        <div class="replay-actions">
+          {#if replay.timing === 'manual_step' && replayActive}
+            <button type="button" onclick={nextReplaySignal} disabled={replayBusy}>
+              Replay next Signal
+            </button>
+          {/if}
+          {#if replayActive}
+            <button class="stop-action" type="button" onclick={stopReplay} disabled={replayBusy}>
+              Stop replay
+            </button>
+          {/if}
+        </div>
+      </div>
+    {/if}
+    {#if replayError}<p class="replay-error" role="status">{replayError}</p>{/if}
+  </section>
+
   {#if historyError}
     <div class="error-banner" role="status">{historyError}</div>
   {/if}
@@ -124,7 +334,10 @@
                 type="button"
                 onclick={() => selectSignal(signal)}
               >
-                <span class="signal-type">{signal.type}</span>
+                <span class="signal-title-row">
+                  <span class="signal-type">{signal.type}</span>
+                  {#if replayMetadata(signal)}<span class="replay-label">Replay</span>{/if}
+                </span>
                 <span class="signal-meta">
                   <time datetime={signal.timestamp}>{displayTime(signal.timestamp)}</time>
                   <span>{signal.source}</span>
@@ -163,7 +376,10 @@
                 type="button"
                 onclick={() => selectSignal(signal)}
               >
-                <span class="signal-type">{signal.type}</span>
+                <span class="signal-title-row">
+                  <span class="signal-type">{signal.type}</span>
+                  {#if replayMetadata(signal)}<span class="replay-label">Replay</span>{/if}
+                </span>
                 <span class="signal-source">{signal.source}</span>
                 <span class="signal-meta">
                   <time datetime={signal.timestamp}>{displayTime(signal.timestamp)}</time>
@@ -185,12 +401,24 @@
     <aside class="detail-panel" aria-labelledby="detail-heading">
       <div class="column-heading detail-heading">
         <div><h3 id="detail-heading">Signal detail</h3></div>
-        {#if detailLoading}<span>Refreshing…</span>{/if}
+        {#if detailLoading}
+          <span>Refreshing…</span>
+        {:else if selectedSignal && replayMetadata(selectedSignal)}
+          <span class="replay-label">Replayed activity</span>
+        {/if}
       </div>
 
       {#if selectedSignal}
         <div class="detail-content">
           {#if detailError}<p class="detail-error">{detailError}</p>{/if}
+
+          {#if selectedReplay}
+            <div class="replay-origin">
+              <strong>Replayed Signal</strong>
+              <span>Original ID <code>{String(selectedReplay.original_signal_id ?? 'unknown')}</code></span>
+              <span>Originally received {displayTime(String(selectedReplay.original_timestamp ?? ''), true)}</span>
+            </div>
+          {/if}
 
           <dl class="identity-grid">
             <div class="wide">
@@ -210,6 +438,16 @@
               <dd>{displayTime(selectedSignal.timestamp, true)}</dd>
             </div>
           </dl>
+
+          <button
+            class="replay-signal-action"
+            type="button"
+            onclick={replaySelectedSignal}
+            disabled={!recordingPath.trim() || replayActive || replayBusy}
+            title={!recordingPath.trim() ? 'Enter the recording path above first' : undefined}
+          >
+            Replay this Signal
+          </button>
 
           <section class="route-card" aria-labelledby="routing-heading">
             <div class="route-title">
@@ -333,7 +571,8 @@
   }
 
   button,
-  input {
+  input,
+  select {
     font: inherit;
   }
 
@@ -422,6 +661,199 @@
   .filter-result strong {
     color: #62ded5;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  .replay-console {
+    display: grid;
+    grid-template-columns: minmax(13rem, 0.7fr) minmax(28rem, 1.8fr);
+    gap: 1rem 1.5rem;
+    padding: 1rem;
+    border-inline: 1px solid #1d2a38;
+    border-bottom: 1px solid #1d2a38;
+    background: linear-gradient(110deg, #0b151d, #0d121a 70%);
+  }
+
+  .replay-copy {
+    display: grid;
+    align-content: center;
+  }
+
+  .replay-copy .eyebrow {
+    margin-bottom: 0.3rem;
+    color: #47cfc7;
+  }
+
+  .replay-copy > p:last-child {
+    margin-top: 0.35rem;
+    color: #718094;
+    font-size: 0.8rem;
+  }
+
+  .replay-fields {
+    display: grid;
+    grid-template-columns: minmax(13rem, 1fr) minmax(9rem, auto) auto auto;
+    gap: 0.7rem;
+    align-items: end;
+  }
+
+  .replay-fields label {
+    display: grid;
+    gap: 0.4rem;
+  }
+
+  .replay-fields label > span {
+    color: #7f8d9f;
+    font-size: 0.75rem;
+  }
+
+  .replay-fields input,
+  .replay-fields select {
+    min-height: 2.45rem;
+    padding: 0.55rem 0.65rem;
+    border: 1px solid #2b3949;
+    border-radius: 0.35rem;
+    outline: none;
+    color: #dfe8f2;
+    background: #080e15;
+  }
+
+  .replay-fields input:focus,
+  .replay-fields select:focus {
+    border-color: #2cc8c0;
+    box-shadow: 0 0 0 2px rgba(44, 200, 192, 0.12);
+  }
+
+  .multiplier-input {
+    width: 6rem;
+  }
+
+  .primary-action,
+  .replay-actions button,
+  .replay-signal-action {
+    min-height: 2.45rem;
+    padding: 0.55rem 0.8rem;
+    border: 1px solid #28716b;
+    border-radius: 0.35rem;
+    color: #d6fffb;
+    background: #12302d;
+    cursor: pointer;
+  }
+
+  .primary-action:disabled,
+  .replay-actions button:disabled,
+  .replay-signal-action:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+
+  .replay-status {
+    display: grid;
+    grid-column: 1 / -1;
+    gap: 0.65rem;
+    padding-top: 0.85rem;
+    border-top: 1px solid #1d2a38;
+  }
+
+  .progress-heading,
+  .progress-heading > div,
+  .replay-status-meta,
+  .replay-actions,
+  .signal-title-row {
+    display: flex;
+    align-items: center;
+  }
+
+  .progress-heading {
+    justify-content: space-between;
+    gap: 1rem;
+    color: #8190a2;
+    font-size: 0.78rem;
+  }
+
+  .progress-heading > div {
+    gap: 0.55rem;
+    min-width: 0;
+  }
+
+  .progress-heading strong {
+    color: #d8e2ec;
+    text-transform: capitalize;
+  }
+
+  .progress-heading > div > span:last-child {
+    overflow: hidden;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .state-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: #5f7082;
+  }
+
+  .state-running,
+  .state-ready {
+    background: #f4b860;
+    box-shadow: 0 0 0.55rem rgba(244, 184, 96, 0.4);
+  }
+
+  .state-completed {
+    background: #58d68d;
+  }
+
+  .state-failed,
+  .state-cancelled {
+    background: #ef6a73;
+  }
+
+  .replay-status progress {
+    width: 100%;
+    height: 0.42rem;
+    overflow: hidden;
+    border: 0;
+    border-radius: 999px;
+    color: #42cec6;
+    background: #182431;
+  }
+
+  .replay-status progress::-webkit-progress-bar {
+    background: #182431;
+  }
+
+  .replay-status progress::-webkit-progress-value {
+    background: #42cec6;
+  }
+
+  .replay-status progress::-moz-progress-bar {
+    background: #42cec6;
+  }
+
+  .replay-status-meta {
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+    color: #718094;
+    font-size: 0.75rem;
+    text-transform: capitalize;
+  }
+
+  .replay-actions {
+    gap: 0.6rem;
+  }
+
+  .replay-actions .stop-action {
+    border-color: #643943;
+    color: #f0b7bb;
+    background: #28161c;
+  }
+
+  .replay-error {
+    grid-column: 1 / -1;
+    color: #efb1b6;
+    font-size: 0.82rem;
   }
 
   .error-banner {
@@ -528,6 +960,53 @@
     font-weight: 600;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .signal-title-row {
+    min-width: 0;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .replay-label {
+    flex: 0 0 auto;
+    padding: 0.18rem 0.4rem;
+    border: 1px solid #765a2c;
+    border-radius: 999px;
+    color: #f4c976;
+    background: rgba(98, 70, 25, 0.2);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .column-heading > .replay-label {
+    color: #f4c976;
+  }
+
+  .replay-origin {
+    display: grid;
+    gap: 0.3rem;
+    padding: 0.75rem;
+    border: 1px solid #765a2c;
+    border-radius: 0.4rem;
+    color: #c9a963;
+    background: rgba(98, 70, 25, 0.14);
+    font-size: 0.72rem;
+  }
+
+  .replay-origin strong {
+    color: #f4c976;
+    text-transform: uppercase;
+  }
+
+  .replay-origin code {
+    color: #f5ddad;
+  }
+
+  .replay-signal-action {
+    width: 100%;
   }
 
   .signal-source {
@@ -717,8 +1196,17 @@
     }
 
     .filter-bar,
+    .replay-console,
     .inspector-grid {
       grid-template-columns: 1fr;
+    }
+
+    .replay-fields {
+      grid-template-columns: 1fr;
+    }
+
+    .multiplier-input {
+      width: 100%;
     }
 
     .filter-result {

@@ -36,6 +36,7 @@ src/echo/entity/
   drives.py         motivational baselines and activation inputs
   relationships.py per-person social context
   self_model.py     embodiment, capability, condition, and situation
+  behavior.py       typed intentions, arbitration, and curiosity goals
 ```
 
 The existing `echo.core.Entity` remains the public actor and kernel primitive.
@@ -232,7 +233,7 @@ coherent slice:
 Configuration files precede runtime loaders so schemas and boundaries can be
 reviewed before persistence and inference make them consequential.
 
-Phases 2 through 6 are implemented in memory. The public Entity composes immutable
+Phases 2 through 9 are implemented. The public Entity composes immutable
 identity and trait snapshots with an embodiment-independent self-model,
 normalized internal state, immutable drive baselines, bounded drive activation,
 retained attention candidates, and per-person relationship state. Runtime
@@ -256,6 +257,27 @@ through an Entity-scoped `MemoryRepository` and Echo-owned `MemoryService`.
 These boundaries share the configured local SQLite database with ordinary
 state while using separate tables and APIs. They do not serialize memory into
 ordinary StateStore keys.
+
+Phase 8 adds provider-neutral, JSON-safe `Intention` values and a Core-owned
+`BehaviorPolicy`. Policy decisions reject low-confidence or unauthorized
+external behavior, defer work when resources, user attention, or
+interruptibility require it, and verify declared capabilities and relationship
+trust. Approval produces a structured Action intent only; it does not record
+the Action in Runtime history or execute an external effect. Attention may
+create bounded background-priority curiosity goals. Active Entity work defers
+those goals, and attention never becomes speech, movement, or tool use by
+itself. Behavior decisions and curiosity state survive development Runtime
+reconstruction and are included in detached character inspection.
+
+Phase 9 adds typed trait reflections and an Echo-owned evolution service.
+Evidence is immutable, timestamped, confidence-scored, direction-scoped, and
+deduplicated. The default policy requires repeated recent support, accounts for
+contradictions, protects unconfigured or explicitly immutable traits, and caps
+one accepted adjustment at 0.05. Inference has no direct trait setter and
+cannot request a delta. Accepted and rejected outcomes retain evidence IDs,
+source, reason, and before/after values in bounded audit history. Evolution
+state survives graceful Entity reconstruction; cold-process durable trait
+storage and automatic reflection scheduling remain future work.
 
 The existing `CharacterMemory` type remains the typed memory domain/container;
 "character development memory" is a distinct durable record kind and must not

@@ -2,20 +2,26 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   eventStreamUrl,
+  advanceReplay,
+  cancelReplay,
   cancelTask,
   fetchConfiguration,
   fetchLogs,
   fetchProviders,
   fetchRestartOperation,
   fetchRuntimeStatus,
+  fetchReplayStatus,
   fetchSignals,
   filterSignals,
   formatUptime,
   mergeSignals,
   reloadConfiguration,
+  replayMetadata,
+  recordedSignalId,
   requestRuntimeRestart,
   setProviderMode,
   sendUserMessage,
+  startReplay,
   signalFromEvent,
   taskDepth,
   updateConfiguration,
@@ -299,5 +305,56 @@ describe('Echo API client', () => {
         type: 'UserMessage', source: 'console', payload: { text: 'Hello' }, metadata: { channel: 'console' }
       })
     });
+  });
+
+  it('controls replay only through the runtime management endpoints', async () => {
+    const replay = {
+      replay_id: 'replay-1', runtime_id: 'runtime-1', recording_path: 'session.jsonl',
+      recording_session_id: 'session-1', mode: 'sequential', timing: 'accelerated',
+      multiplier: 4, safety_policy: 'record_only', state: 'running', total_signals: 8,
+      next_index: 2, remaining_signals: 6, started_at: '2026-09-10T12:00:00Z',
+      completed_at: null, cancellation_requested: false, replayed_signals: [], error: null
+    } as const;
+    const fetcher = vi.fn(async () => new Response(JSON.stringify(replay), {
+      status: 200, headers: { 'content-type': 'application/json' }
+    }));
+
+    await startReplay(fetcher, {
+      path: 'session.jsonl', mode: 'sequential', timing: 'accelerated', multiplier: 4
+    }, '/api/');
+    await fetchReplayStatus(fetcher, 'replay-1', '/api/');
+    await advanceReplay(fetcher, 'replay-1', '/api/');
+    await cancelReplay(fetcher, 'replay-1', '/api/');
+
+    expect(fetcher).toHaveBeenNthCalledWith(1, '/api/runtime/replays', {
+      method: 'POST',
+      headers: { accept: 'application/json', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        path: 'session.jsonl', mode: 'sequential', signal_id: undefined,
+        timing: 'accelerated', multiplier: 4, safety_policy: 'record_only'
+      })
+    });
+    expect(fetcher).toHaveBeenNthCalledWith(2, '/api/runtime/replays/replay-1', {
+      headers: { accept: 'application/json' }
+    });
+    expect(fetcher).toHaveBeenNthCalledWith(3, '/api/runtime/replays/replay-1/step', {
+      method: 'POST', headers: { accept: 'application/json' }
+    });
+    expect(fetcher).toHaveBeenNthCalledWith(4, '/api/runtime/replays/replay-1', {
+      method: 'DELETE', headers: { accept: 'application/json' }
+    });
+  });
+
+  it('recognizes replayed Signals and resolves their recorded identity', () => {
+    const replayed = signal({
+      id: 'runtime-copy',
+      metadata: {
+        echo_replay: { replayed: true, original_signal_id: 'recorded-original' }
+      }
+    });
+    expect(replayMetadata(replayed)).toMatchObject({ replayed: true });
+    expect(recordedSignalId(replayed)).toBe('recorded-original');
+    expect(replayMetadata(signal())).toBeNull();
+    expect(recordedSignalId(signal())).toBe('signal-1');
   });
 });

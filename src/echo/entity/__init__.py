@@ -10,6 +10,17 @@ from echo.entity.audit import (
     CharacterMutationTarget,
 )
 from echo.entity.attention import AttentionCandidate, AttentionProposal
+from echo.entity.behavior import (
+    BehaviorContext,
+    BehaviorController,
+    BehaviorDecision,
+    BehaviorOutcome,
+    BehaviorPolicy,
+    CuriosityGoal,
+    CuriosityGoalStatus,
+    Intention,
+    IntentionType,
+)
 from echo.entity.context import (
     CharacterContext,
     CharacterContextBuilder,
@@ -49,7 +60,14 @@ from echo.entity.relationships import RelationshipState, RelationshipStore
 from echo.entity.self_model import SelfModel
 from echo.entity.state import InternalState
 from echo.entity.state_store import InMemoryStateStore, StateCategory, StateStore
-from echo.entity.traits import TraitEvidence, TraitProfile
+from echo.entity.traits import (
+    TraitEvidence,
+    TraitEvolutionDecision,
+    TraitEvolutionPolicy,
+    TraitEvolutionService,
+    TraitProfile,
+    TraitReflection,
+)
 
 __all__ = [
     "CharacterMutationAuditRecord",
@@ -60,6 +78,13 @@ __all__ = [
     "CharacterContextRequest",
     "AttentionCandidate",
     "AttentionProposal",
+    "BehaviorContext",
+    "BehaviorController",
+    "BehaviorDecision",
+    "BehaviorOutcome",
+    "BehaviorPolicy",
+    "CuriosityGoal",
+    "CuriosityGoalStatus",
     "DriveProfile",
     "DurableMemoryRecord",
     "DurableMemoryStatus",
@@ -72,6 +97,8 @@ __all__ = [
     "MemoryConsolidationProposal",
     "MemoryImportance",
     "InternalState",
+    "Intention",
+    "IntentionType",
     "InMemoryStateStore",
     "InMemoryMemoryRepository",
     "MemoryKind",
@@ -92,7 +119,11 @@ __all__ = [
     "SemanticMemory",
     "SignalInfluence",
     "TraitEvidence",
+    "TraitEvolutionDecision",
+    "TraitEvolutionPolicy",
+    "TraitEvolutionService",
     "TraitProfile",
+    "TraitReflection",
     "WorkingMemory",
     "user_statement_candidates",
 ]

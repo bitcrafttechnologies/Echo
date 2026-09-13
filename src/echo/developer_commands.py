@@ -7,6 +7,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import StrEnum
 import json
+import math
 import shlex
 from typing import Any
 
@@ -21,8 +22,11 @@ from echo.runtime_service import (
     RuntimeServiceProtocol,
     SetStateValuesRequest,
     SignalQuery,
+    StartRecordingRequest,
+    StartReplayRequest,
     TaskQuery,
 )
+from echo.runtime_replay import ReplayMode, ReplaySafetyPolicy, ReplayTiming
 
 
 class DeveloperCommandError(Exception):
@@ -82,6 +86,15 @@ class CommandName(StrEnum):
     CONFIG_INSPECT = "config.inspect"
     CONFIG_SET = "config.set"
     CONFIG_RELOAD = "config.reload"
+    RECORDING_START = "recording.start"
+    RECORDING_STOP = "recording.stop"
+    RECORDING_STATUS = "recording.status"
+    REPLAY_SIGNAL = "replay.signal"
+    REPLAY_SESSION = "replay.session"
+    REPLAY_STEP = "replay.step"
+    REPLAY_NEXT = "replay.next"
+    REPLAY_CANCEL = "replay.cancel"
+    REPLAY_STATUS = "replay.status"
 
 
 def _copy(value: Any) -> Any:
@@ -99,6 +112,110 @@ def _require_identifier(value: str, name: str) -> None:
 @dataclass(slots=True, kw_only=True, frozen=True)
 class RuntimeStatusCommand:
     name: CommandName = field(default=CommandName.RUNTIME_STATUS, init=False)
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
+class RecordingStartCommand:
+    path: str
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+    name: CommandName = field(default=CommandName.RECORDING_START, init=False)
+
+    def __post_init__(self) -> None:
+        _require_identifier(self.path, "path")
+        if not isinstance(self.metadata, Mapping):
+            raise CommandValidationError("metadata must be a mapping")
+        object.__setattr__(self, "metadata", _copy(dict(self.metadata)))
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
+class RecordingStopCommand:
+    name: CommandName = field(default=CommandName.RECORDING_STOP, init=False)
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
+class RecordingStatusCommand:
+    name: CommandName = field(default=CommandName.RECORDING_STATUS, init=False)
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
+class ReplayStartCommand:
+    path: str
+    mode: ReplayMode
+    signal_id: str | None = None
+    timing: ReplayTiming = ReplayTiming.IMMEDIATE
+    multiplier: float | None = None
+    safety_policy: ReplaySafetyPolicy = ReplaySafetyPolicy.RECORD_ONLY
+    name: CommandName = field(init=False)
+
+    def __post_init__(self) -> None:
+        _require_identifier(self.path, "path")
+        if self.mode is ReplayMode.SIGNAL:
+            _require_identifier(self.signal_id or "", "signal_id")
+            name = CommandName.REPLAY_SIGNAL
+        elif self.mode is ReplayMode.SEQUENTIAL:
+            name = CommandName.REPLAY_SESSION
+        elif self.mode is ReplayMode.STEP:
+            name = CommandName.REPLAY_STEP
+            if self.timing not in {
+                ReplayTiming.IMMEDIATE,
+                ReplayTiming.MANUAL_STEP,
+            }:
+                raise CommandValidationError(
+                    "step replay cannot specify another timing mode"
+                )
+            object.__setattr__(self, "timing", ReplayTiming.MANUAL_STEP)
+        else:
+            raise CommandValidationError("unsupported replay mode")
+        if self.safety_policy is not ReplaySafetyPolicy.RECORD_ONLY:
+            raise CommandValidationError("unsupported replay safety policy")
+        if (
+            self.mode is ReplayMode.SIGNAL
+            and self.timing is not ReplayTiming.IMMEDIATE
+        ):
+            raise CommandValidationError("single-Signal replay uses immediate timing")
+        if self.timing is ReplayTiming.ACCELERATED:
+            if (
+                isinstance(self.multiplier, bool)
+                or not isinstance(self.multiplier, (int, float))
+                or not math.isfinite(float(self.multiplier))
+                or self.multiplier <= 0
+            ):
+                raise CommandValidationError(
+                    "accelerated replay multiplier must be finite and positive"
+                )
+            object.__setattr__(self, "multiplier", float(self.multiplier))
+        elif self.multiplier is not None:
+            raise CommandValidationError(
+                "multiplier is only valid for accelerated replay"
+            )
+        object.__setattr__(self, "name", name)
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
+class ReplayNextCommand:
+    replay_id: str
+    name: CommandName = field(default=CommandName.REPLAY_NEXT, init=False)
+
+    def __post_init__(self) -> None:
+        _require_identifier(self.replay_id, "replay_id")
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
+class ReplayCancelCommand:
+    replay_id: str
+    name: CommandName = field(default=CommandName.REPLAY_CANCEL, init=False)
+
+    def __post_init__(self) -> None:
+        _require_identifier(self.replay_id, "replay_id")
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
+class ReplayStatusCommand:
+    replay_id: str
+    name: CommandName = field(default=CommandName.REPLAY_STATUS, init=False)
+
+    def __post_init__(self) -> None:
+        _require_identifier(self.replay_id, "replay_id")
 
 
 @dataclass(slots=True, kw_only=True, frozen=True)
@@ -259,6 +376,13 @@ class ConfigSetCommand:
 
 DeveloperCommand = (
     RuntimeStatusCommand
+    | RecordingStartCommand
+    | RecordingStopCommand
+    | RecordingStatusCommand
+    | ReplayStartCommand
+    | ReplayNextCommand
+    | ReplayCancelCommand
+    | ReplayStatusCommand
     | EntityInspectCommand
     | SignalListCommand
     | SignalInspectCommand
@@ -302,6 +426,13 @@ class DeveloperCommandDispatcher:
             command,
             (
                 RuntimeStatusCommand,
+                RecordingStartCommand,
+                RecordingStopCommand,
+                RecordingStatusCommand,
+                ReplayStartCommand,
+                ReplayNextCommand,
+                ReplayCancelCommand,
+                ReplayStatusCommand,
                 EntityInspectCommand,
                 SignalListCommand,
                 SignalInspectCommand,
@@ -340,6 +471,34 @@ class DeveloperCommandDispatcher:
     async def _resolve(self, command: DeveloperCommand) -> Any:
         if isinstance(command, RuntimeStatusCommand):
             return self._service.get_runtime_status()
+        if isinstance(command, RecordingStartCommand):
+            return await self._service.start_recording(
+                StartRecordingRequest(
+                    path=command.path,
+                    metadata=command.metadata,
+                )
+            )
+        if isinstance(command, RecordingStopCommand):
+            return await self._service.stop_recording()
+        if isinstance(command, RecordingStatusCommand):
+            return self._service.get_recording_status()
+        if isinstance(command, ReplayStartCommand):
+            return await self._service.start_replay(
+                StartReplayRequest(
+                    path=command.path,
+                    mode=command.mode,
+                    signal_id=command.signal_id,
+                    timing=command.timing,
+                    multiplier=command.multiplier,
+                    safety_policy=command.safety_policy,
+                )
+            )
+        if isinstance(command, ReplayNextCommand):
+            return await self._service.replay_next_step(command.replay_id)
+        if isinstance(command, ReplayCancelCommand):
+            return await self._service.cancel_replay(command.replay_id)
+        if isinstance(command, ReplayStatusCommand):
+            return self._service.get_replay_status(command.replay_id)
         if isinstance(command, EntityInspectCommand):
             return self._service.inspect_entity(command.entity_id)
         if isinstance(command, SignalListCommand):
@@ -411,6 +570,52 @@ def parse_developer_command(text: str) -> DeveloperCommand:
 
     if tokens == ["runtime", "status"]:
         return RuntimeStatusCommand()
+    if tokens == ["record", "status"]:
+        return RecordingStatusCommand()
+    if tokens == ["record", "stop"]:
+        return RecordingStopCommand()
+    if len(tokens) in {3, 4} and tokens[:2] == ["record", "start"]:
+        metadata = (
+            _parse_json_object(tokens[3], "metadata") if len(tokens) == 4 else {}
+        )
+        return RecordingStartCommand(path=tokens[2], metadata=metadata)
+    if len(tokens) == 4 and tokens[:2] == ["replay", "signal"]:
+        return ReplayStartCommand(
+            path=tokens[2], mode=ReplayMode.SIGNAL, signal_id=tokens[3]
+        )
+    if len(tokens) in {3, 4} and tokens[:2] == ["replay", "session"]:
+        try:
+            timing = (
+                ReplayTiming(tokens[3])
+                if len(tokens) == 4
+                else ReplayTiming.IMMEDIATE
+            )
+        except ValueError as error:
+            raise CommandParseError("unsupported replay timing mode") from error
+        return ReplayStartCommand(
+            path=tokens[2], mode=ReplayMode.SEQUENTIAL, timing=timing
+        )
+    if len(tokens) == 5 and tokens[:2] == ["replay", "session"]:
+        if tokens[3] != ReplayTiming.ACCELERATED.value:
+            raise CommandParseError("only accelerated replay accepts a multiplier")
+        try:
+            multiplier = float(tokens[4])
+        except ValueError as error:
+            raise CommandParseError("replay multiplier must be a number") from error
+        return ReplayStartCommand(
+            path=tokens[2],
+            mode=ReplayMode.SEQUENTIAL,
+            timing=ReplayTiming.ACCELERATED,
+            multiplier=multiplier,
+        )
+    if len(tokens) == 3 and tokens[:2] == ["replay", "step"]:
+        return ReplayStartCommand(path=tokens[2], mode=ReplayMode.STEP)
+    if len(tokens) == 3 and tokens[:2] == ["replay", "next"]:
+        return ReplayNextCommand(replay_id=tokens[2])
+    if len(tokens) == 3 and tokens[:2] == ["replay", "cancel"]:
+        return ReplayCancelCommand(replay_id=tokens[2])
+    if len(tokens) == 3 and tokens[:2] == ["replay", "status"]:
+        return ReplayStatusCommand(replay_id=tokens[2])
     if tokens == ["signal", "list"]:
         return SignalListCommand()
     if tokens == ["task", "list"]:
