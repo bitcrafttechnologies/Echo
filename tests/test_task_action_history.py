@@ -132,6 +132,21 @@ class ActionHistoryTests(unittest.IsolatedAsyncioTestCase):
         assert entry.execution_time is not None
         self.assertGreaterEqual(entry.execution_time, entry.created_at)
 
+    async def test_external_action_remains_pending_until_outcome_arrives(self) -> None:
+        bit = Entity("bit")
+        runtime = Runtime([bit])
+
+        action = await bit.begin_action("filesystem.list", resource_id="filesystem.root.0")
+        pending = runtime.get_action(action.id)
+        assert pending is not None
+        self.assertEqual(pending.status, ActionStatus.CREATED)
+        self.assertIsNone(pending.execution_time)
+
+        completed = runtime.complete_action(action.id, result={"entries": []})
+        assert completed is not None
+        self.assertEqual(completed.status, ActionStatus.EXECUTED)
+        self.assertEqual(completed.result, {"entries": []})
+
     async def test_action_failure_fields_are_exposed(self) -> None:
         history = ActionHistory()
         action = Action(type="speak")

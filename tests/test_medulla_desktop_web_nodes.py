@@ -10,7 +10,7 @@ from echo import Action, EchoNodeWebSocketHost, Entity, MockProvider, ProviderRo
 from echo.host import register_user_message_handler
 from medulla_node import EchoConnectionConfig, MedullaNodeConfig, MedullaNodeRuntime
 from medulla_node.adapters.macbook import MacbookAdapter, MacbookLocation
-from medulla_node.adapters.web import DEFAULT_RESEARCH_DOMAINS, WebResearchAdapter
+from medulla_node.adapters.web import DEFAULT_RESEARCH_DOMAINS, WebResearchAdapter, _BingSearchExtractor
 
 
 class FakeMacbookBackend:
@@ -50,6 +50,18 @@ def node_config(node_id: str, endpoint: str) -> MedullaNodeConfig:
 
 
 class DesktopAndWebNodeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_bounded_search_fallback_extracts_only_result_links(self) -> None:
+        parser = _BingSearchExtractor()
+        parser.feed(
+            '<script><a href="https://evil.invalid/script">ignored</a></script>'
+            '<li class="b_algo"><h2><a href="https://ocw.mit.edu/courses/6-006/">'
+            'Introduction to <strong>Algorithms</strong></a></h2></li>'
+        )
+        self.assertEqual(
+            parser.results,
+            [{"url": "https://ocw.mit.edu/courses/6-006/", "title": "Introduction to Algorithms"}],
+        )
+
     async def test_macbook_node_is_scoped_and_emits_telemetry(self) -> None:
         with TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -61,6 +73,12 @@ class DesktopAndWebNodeTests(unittest.IsolatedAsyncioTestCase):
             await runtime.start()
             try:
                 from medulla_protocol import NodeAction
+                listed = await runtime.execute(
+                    NodeAction(type="filesystem.list", resource_id="filesystem.root.0")
+                )
+                self.assertEqual(
+                    [item["name"] for item in listed.result["entries"]], ["note.txt"]
+                )
                 read = await runtime.execute(NodeAction(type="filesystem.read", parameters={"path": str(note)}))
                 self.assertEqual(read.result["content"], "Echo can read this bounded file.")
                 denied = await runtime.execute(NodeAction(type="filesystem.read", parameters={"path": "/etc/hosts"}))
@@ -79,6 +97,8 @@ class DesktopAndWebNodeTests(unittest.IsolatedAsyncioTestCase):
         try:
             result = await runtime.execute(NodeAction(type="web.search", parameters={"query": "algorithms", "limit": 5}))
             self.assertEqual([item["title"] for item in result.result["results"]], ["MIT Algorithms", "Attention Is All You Need"])
+            self.assertEqual(result.result["search_scope"], "public_web")
+            self.assertIn("do not define", result.result["access_policy"]["behavior"])
             denied = await runtime.execute(NodeAction(type="web.fetch", parameters={"url": "http://127.0.0.1/private"}))
             self.assertEqual(denied.state.value, "failed")
             lookalike = await runtime.execute(NodeAction(type="web.fetch", parameters={"url": "https://github.com.evil.invalid/private"}))

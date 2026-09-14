@@ -228,7 +228,9 @@ class MacbookAdapter(MedullaAdapter):
         if not self._started:
             raise RuntimeError("MacBook adapter is not running")
         if action.type.startswith("filesystem."):
-            path = self._allowed_path(action.parameters.get("path"))
+            path = self._allowed_path(
+                action.parameters.get("path"), resource_id=action.resource_id
+            )
             if action.type == "filesystem.list":
                 if not path.is_dir():
                     raise ValueError("path is not a directory")
@@ -264,10 +266,22 @@ class MacbookAdapter(MedullaAdapter):
             return dict(await asyncio.to_thread(self._backend.weather, self._location.latitude, self._location.longitude))
         raise ValueError(f"unsupported MacBook Action: {action.type}")
 
-    def _allowed_path(self, value: Any) -> Path:
+    def _allowed_path(self, value: Any, *, resource_id: str | None = None) -> Path:
+        root: Path | None = None
+        if resource_id is not None:
+            prefix = "filesystem.root."
+            if not resource_id.startswith(prefix):
+                raise ValueError("filesystem Action requires a filesystem root resource_id")
+            try:
+                root = self._roots[int(resource_id.removeprefix(prefix))]
+            except (ValueError, IndexError) as error:
+                raise ValueError("filesystem Action has an unknown root resource_id") from error
+        if value in (None, "") and root is not None:
+            return root
         if type(value) is not str or not value:
-            raise ValueError("filesystem Action requires a non-empty path")
-        candidate = Path(value).expanduser().resolve()
+            raise ValueError("filesystem Action requires a path or root resource_id")
+        supplied = Path(value).expanduser()
+        candidate = (root / supplied).resolve() if root is not None and not supplied.is_absolute() else supplied.resolve()
         if not any(candidate == root or candidate.is_relative_to(root) for root in self._roots):
             raise PermissionError("path is outside configured file roots")
         return candidate

@@ -13,7 +13,11 @@ from urllib.parse import urlsplit
 
 from echo.core.action import Action
 from echo.core.signal import Signal
-from echo.medulla.capability import CapabilityRegistry
+from echo.medulla.capability import (
+    CapabilityAvailabilityState,
+    CapabilityProviderHealthState,
+    CapabilityRegistry,
+)
 from echo.medulla.node import (
     MedullaNodeDirectory,
     NodeProtocolError,
@@ -245,6 +249,7 @@ class EchoNodeWebSocketHost:
             str, tuple[
                 str,
                 asyncio.Future[tuple[bool, ConnectionNegotiationState, str | None]],
+                asyncio.Event,
             ]
         ] = {}
         self._approval_requests: dict[str, NodeApprovalRequest] = {}
@@ -291,9 +296,10 @@ class EchoNodeWebSocketHost:
             if not future.done():
                 future.set_exception(ConnectionError("Echo node host stopped"))
         self._pending.clear()
-        for _node_id, future in self._authorization_pending.values():
+        for _node_id, future, activation_complete in self._authorization_pending.values():
             if not future.done():
                 future.set_exception(ConnectionError("Echo node host stopped"))
+            activation_complete.set()
         self._authorization_pending.clear()
         for task in self._decision_tasks:
             task.cancel()
@@ -358,15 +364,24 @@ class EchoNodeWebSocketHost:
     ) -> NodeActionResult:
         """Execute through the first active node advertising an exact capability."""
 
-        candidates = [
-            node_id
-            for node_id in self.node_ids
-            if self.status(node_id).negotiation_state is ConnectionNegotiationState.ACTIVE
-            and any(item.name == action.type for item in self._manifests[node_id].capabilities)
-        ]
+        candidates = []
+        for capability in self.registry.find(action.type):
+            node_id = capability.provider.provider_id
+            health = self.registry.health(node_id)
+            if (
+                self.status(node_id).negotiation_state is ConnectionNegotiationState.ACTIVE
+                and capability.availability.state
+                in {
+                    CapabilityAvailabilityState.AVAILABLE,
+                    CapabilityAvailabilityState.DEGRADED,
+                }
+                and health is not None
+                and health.state is not CapabilityProviderHealthState.UNAVAILABLE
+            ):
+                candidates.append(node_id)
         if not candidates:
             raise ConnectionError(f"no active Medulla Node provides {action.type}")
-        return await self.execute(candidates[0], action, timeout=timeout)
+        return await self.execute(sorted(candidates)[0], action, timeout=timeout)
 
     async def receive_signal(self) -> Signal:
         return await self._signals.get()
@@ -386,6 +401,30 @@ class EchoNodeWebSocketHost:
         """Every observed candidate, including declined, blocked, and offline nodes."""
 
         return tuple(sorted(set(self._sessions) | set(self._manifests)))
+
+    def inspect_resources(self) -> tuple[dict[str, Any], ...]:
+        """Return declared resources with their live provider connection state."""
+
+        resources: list[dict[str, Any]] = []
+        for node_id in self.node_ids:
+            manifest = self._manifests.get(node_id)
+            if manifest is None:
+                continue
+            status = self.status(node_id)
+            connected = (
+                status.negotiation_state is ConnectionNegotiationState.ACTIVE
+                and status.reachability is not RemoteNodeReachability.UNREACHABLE
+            )
+            for resource in manifest.resources:
+                resources.append(
+                    {
+                        **resource.to_dict(),
+                        "node_id": node_id,
+                        "provider_id": manifest.provider.provider_id,
+                        "provider_connected": connected,
+                    }
+                )
+        return tuple(resources)
 
     def approval_request(self, node_id: str) -> NodeApprovalRequest | None:
         return self._approval_requests.get(node_id)
@@ -545,35 +584,40 @@ class EchoNodeWebSocketHost:
             {"authorization": authorization.to_dict()},
         )
         future = asyncio.get_running_loop().create_future()
-        self._authorization_pending[message.id] = (node_id, future)
+        activation_complete = asyncio.Event()
+        self._authorization_pending[message.id] = (node_id, future, activation_complete)
         try:
             await socket.send(encode_wire_message(message))
             accepted, state, error = await asyncio.wait_for(future, timeout)
+            if not accepted:
+                self._transition(node_id, state)
+                await self._publish_event(
+                    NodeLifecycleEventType.NODE_AUTHENTICATION_FAILED,
+                    node_id,
+                    details={"reason": error or "node rejected authorization"},
+                )
+                raise NodeAuthorizationError(state, error or "node rejected authorization")
+            self._transition(node_id, ConnectionNegotiationState.AUTHENTICATED)
+            manifest = self._manifests[node_id]
+            self.directory.connect(manifest, transport_id=f"node:{node_id}")
+            self._authorized_summaries[node_id] = authorization.public_summary()
+            self._transition(node_id, ConnectionNegotiationState.ACTIVE)
+            async with self._connected:
+                self._connected.notify_all()
+            await self._publish_event(NodeLifecycleEventType.NODE_CONNECTED, node_id)
+            display_name = manifest.node.display_name or manifest.node.node_id
+            reason = self._decision_reasons.get(node_id)
+            announcement = f"{display_name} connected."
+            if self._approval_mode is NodeApprovalMode.AUTONOMOUS and reason:
+                announcement = f"I connected to {display_name} because {reason}."
+            self._offer_bounded(self._announcements, announcement)
+            return self.status(node_id)
         finally:
+            # The per-socket receive loop waits here after an accepted result,
+            # so it cannot process a queued Signal until registration and the
+            # host-side ACTIVE transition are complete.
+            activation_complete.set()
             self._authorization_pending.pop(message.id, None)
-        if not accepted:
-            self._transition(node_id, state)
-            await self._publish_event(
-                NodeLifecycleEventType.NODE_AUTHENTICATION_FAILED,
-                node_id,
-                details={"reason": error or "node rejected authorization"},
-            )
-            raise NodeAuthorizationError(state, error or "node rejected authorization")
-        self._transition(node_id, ConnectionNegotiationState.AUTHENTICATED)
-        manifest = self._manifests[node_id]
-        self.directory.connect(manifest, transport_id=f"node:{node_id}")
-        self._authorized_summaries[node_id] = authorization.public_summary()
-        self._transition(node_id, ConnectionNegotiationState.ACTIVE)
-        async with self._connected:
-            self._connected.notify_all()
-        await self._publish_event(NodeLifecycleEventType.NODE_CONNECTED, node_id)
-        display_name = manifest.node.display_name or manifest.node.node_id
-        reason = self._decision_reasons.get(node_id)
-        announcement = f"{display_name} connected."
-        if self._approval_mode is NodeApprovalMode.AUTONOMOUS and reason:
-            announcement = f"I connected to {display_name} because {reason}."
-        self._offer_bounded(self._announcements, announcement)
-        return self.status(node_id)
 
     def status(self, node_id: str) -> RemoteNodeSessionStatus:
         return self._sessions.get(node_id) or RemoteNodeSessionStatus(
@@ -738,11 +782,13 @@ class EchoNodeWebSocketHost:
                     state = ConnectionNegotiationState(state_value)
                     pending = self._authorization_pending.get(reply_id)
                     if pending is not None:
-                        expected_node, future = pending
+                        expected_node, future, activation_complete = pending
                         if node_id != expected_node:
                             raise ValueError("authorization result node mismatch")
                         if not future.done():
                             future.set_result((accepted, state, error))
+                        if accepted:
+                            await activation_complete.wait()
                     self._touch(node_id)
                 elif message.type is WireMessageType.HEARTBEAT:
                     kind = message.payload.get("kind", "ping")
@@ -785,9 +831,11 @@ class EchoNodeWebSocketHost:
                     decision_reason=self._decision_reasons.get(node_id),
                     granted_scopes=self._authorized_summaries.get(node_id),
                 )
-                for pending_node, future in self._authorization_pending.values():
+                for pending_node, future, activation_complete in self._authorization_pending.values():
                     if pending_node == node_id and not future.done():
                         future.set_exception(ConnectionError("node disconnected during authorization"))
+                    if pending_node == node_id:
+                        activation_complete.set()
                 for pending_node, _action_id, future in self._pending.values():
                     if pending_node == node_id and not future.done():
                         future.set_exception(ConnectionError("node disconnected during Action"))

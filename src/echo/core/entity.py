@@ -542,6 +542,14 @@ class Entity:
         action = Action(type=action_type, parameters=parameters)
         return self._runtime.record_action(action, self)
 
+    async def begin_action(self, action_type: str, **parameters: Any) -> Action:
+        """Create a pending Action whose external outcome will be recorded later."""
+
+        if self._runtime is None:
+            raise RuntimeError("entity must be registered with a Runtime")
+        action = Action(type=action_type, parameters=parameters)
+        return self._runtime.record_action(action, self, execute_immediately=False)
+
     async def act(self, action_type: str, **parameters: Any) -> Action:
         return await self.action(action_type, **parameters)
 

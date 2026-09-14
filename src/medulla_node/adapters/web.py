@@ -81,6 +81,43 @@ class _SearchExtractor(HTMLParser):
             self._parts = []
 
 
+class _BingSearchExtractor(HTMLParser):
+    """Extract ordinary result links without evaluating page script."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.results: list[dict[str, str]] = []
+        self._in_result = False
+        self._in_heading = False
+        self._href: str | None = None
+        self._parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attributes = dict(attrs)
+        classes = (attributes.get("class") or "").split()
+        if tag == "li" and "b_algo" in classes:
+            self._in_result = True
+        elif self._in_result and tag == "h2":
+            self._in_heading = True
+        elif self._in_result and self._in_heading and tag == "a" and self._href is None:
+            self._href = attributes.get("href")
+            self._parts = []
+
+    def handle_data(self, data: str) -> None:
+        if self._href is not None and data.strip():
+            self._parts.append(" ".join(data.split()))
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "a" and self._href is not None:
+            self.results.append({"url": self._href, "title": " ".join(self._parts)})
+            self._href = None
+            self._parts = []
+        elif tag == "h2":
+            self._in_heading = False
+        elif tag == "li" and self._in_result:
+            self._in_result = False
+
+
 class StandardWebResearchBackend:
     """HTTPS backend with DNS-level local-network rejection."""
 
@@ -141,14 +178,26 @@ class StandardWebResearchBackend:
         return {"url": final_url, "title": title, "content": content, "content_type": content_type, "truncated": truncated}
 
     def search(self, query: str, limit: int) -> Sequence[Mapping[str, Any]]:
-        search_url = f"https://lite.duckduckgo.com/lite/?q={quote_plus(query)}"
-        self._safe_remote(search_url)
-        request = Request(search_url, headers={"User-Agent": "Mozilla/5.0 (compatible; medulla-web/0.1)", "Accept": "text/html"})
-        with urlopen(request, timeout=10) as response:
-            html = response.read(524_288).decode("utf-8", errors="replace")
-        parser = _SearchExtractor()
-        parser.feed(html)
-        return parser.results[: limit * 4]
+        # Discovery covers the public web. The adapter separately applies its
+        # access policy to every returned URL before exposing results to Echo.
+        providers: tuple[tuple[str, type[HTMLParser]], ...] = (
+            (f"https://lite.duckduckgo.com/lite/?q={quote_plus(query)}", _SearchExtractor),
+            (f"https://www.bing.com/search?q={quote_plus(query)}", _BingSearchExtractor),
+        )
+        for search_url, parser_type in providers:
+            try:
+                self._safe_remote(search_url)
+                request = Request(search_url, headers={"User-Agent": "Mozilla/5.0 (compatible; medulla-web/0.9)", "Accept": "text/html"})
+                with urlopen(request, timeout=10) as response:
+                    html = response.read(524_288).decode("utf-8", errors="replace")
+                parser = parser_type()
+                parser.feed(html)
+                results = getattr(parser, "results", [])
+                if results:
+                    return results[: limit * 4]
+            except (OSError, ValueError):
+                continue
+        return ()
 
 
 class WebResearchAdapter(MedullaAdapter):
@@ -169,7 +218,7 @@ class WebResearchAdapter(MedullaAdapter):
         super().__init__(
             adapter_id="web-research",
             capabilities=(
-                _capability(provider, "web.search", "Search approved open research sources by keyword"),
+                _capability(provider, "web.search", "Search the public web; returned URLs remain subject to Medulla access policy"),
                 _capability(provider, "web.fetch", "Fetch and extract text from an approved HTTPS URL"),
             ),
             resources=tuple(MedullaNodeResource(resource_id=f"web.domain.{index}", description=f"Approved web domain {domain}", schema={"type": "string"}, metadata={"domain": domain}) for index, domain in enumerate(domains)),
@@ -197,7 +246,18 @@ class WebResearchAdapter(MedullaAdapter):
                 except (TypeError, ValueError, PermissionError): continue
                 results.append({"url": url, "title": str(item.get("title", "")), **({"snippet": str(item["snippet"])} if item.get("snippet") else {})})
                 if len(results) >= limit: break
-            return {"query": query.strip(), "results": results, "allowed_domains": list(self._domains)}
+            return {
+                "query": query.strip(),
+                "results": results,
+                "search_scope": "public_web",
+                "access_policy": {
+                    "preapproved_domains": list(self._domains),
+                    "behavior": (
+                        "These domains may be returned and fetched under predefined "
+                        "approval policy; they do not define the complete searchable web."
+                    ),
+                },
+            }
         raise ValueError(f"unsupported web research Action: {action.type}")
 
     def _allowed_url(self, value: Any) -> str:

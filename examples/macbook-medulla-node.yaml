@@ -23,8 +23,7 @@ health:
   supported: true
 macbook:
   file_roots:
-    - ~/Documents
-    - ~/Downloads
+    - ~/Desktop
   telemetry_interval: 60
   maximum_file_bytes: 262144
   location:
