@@ -1,0 +1,21 @@
+"""Public version constants for the standalone Medulla packages."""
+
+MEDULLA_NODE_RELEASE = "0.9-node-0.9"
+__version__ = MEDULLA_NODE_RELEASE
+CAPABILITY_CONTRACT_VERSION = 1
+NODE_PROTOCOL_NAME = "medulla"
+NODE_PROTOCOL_VERSION = 1
+NODE_PROTOCOL = f"{NODE_PROTOCOL_NAME}/{NODE_PROTOCOL_VERSION}"
+WIRE_PROTOCOL = "echo.medulla"
+WIRE_VERSION = 1
+
+__all__ = [
+    "MEDULLA_NODE_RELEASE",
+    "__version__",
+    "CAPABILITY_CONTRACT_VERSION",
+    "NODE_PROTOCOL",
+    "NODE_PROTOCOL_NAME",
+    "NODE_PROTOCOL_VERSION",
+    "WIRE_PROTOCOL",
+    "WIRE_VERSION",
+]

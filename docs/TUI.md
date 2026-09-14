@@ -39,17 +39,20 @@ required; embedded hosts can construct `EchoTui(LocalEchoClient(service))`
 without HTTP.
 
 The tmux workspace contains `dashboard`, `chat`, `signals`, `tasks`, `entity`,
-`providers`, `logs`, `config`, and `shell` windows. Alt+1 through Alt+7 select the seven Echo
-views. Native tmux controls continue to work.
+`providers`, `medulla`, `config`, and `logs` windows. Alt+1 through Alt+9 select
+the nine Echo views. Native tmux controls continue to work.
 
 Within a full-screen view:
 
-- `1`–`8` selects Overview, Chat, Signals, Tasks, Entity, Providers,
-  Configuration, or Logs.
+- `1`–`9` selects Overview, Chat, Signals, Tasks, Entity, Providers, Medulla
+  Nodes, Configuration, or Logs.
 - `:` opens the shared structured Echo command prompt.
 - `c` sends a message from Chat as a normal `UserMessage` Signal.
 - `f` filters Signals by `type`/`source` or Logs by `severity`/`event_type`.
 - `e` selects an Entity in the Entity and Chat views.
+- On Medulla Nodes, `a` approves the selected candidate, `z` supplies a
+  separate authorization JSON object, `d` declines it, `b` blocks it, and `u`
+  unblocks/reconsiders it. Approval alone never authorizes requested scopes.
 - `r` refreshes immediately.
 - `q` exits the current TUI process.
 
@@ -85,6 +88,7 @@ echoc provider mode auto
 | Per-person relationship state | Entity |
 | Typed working, episodic, semantic, preference, and relationship memory | Entity |
 | Provider mode, health, active provider/model, latency, failures, history | Providers + command prompt |
+| Node manifests, lifecycle, reachability, approval, and scope authorization | Medulla Nodes |
 | Severity/event-type structured records | Logs + `f` filter |
 | `UserMessage` Signal injection and associated Action responses | Chat |
 

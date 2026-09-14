@@ -792,6 +792,8 @@ class Runtime:
         action: Action,
         entity: Entity,
         task: Task | None = None,
+        *,
+        execute_immediately: bool = True,
     ) -> Action:
         if task is None and self._current_entity is entity:
             task = self._current_task
@@ -828,16 +830,59 @@ class Runtime:
                 action_id=action.id,
                 metadata=metadata,
             )
-            self.action_history.mark_executed(action.id)
-            self._log(
-                RuntimeEventType.ACTION_EXECUTED,
-                entity_id=action.entity_id,
-                signal_id=signal_id,
-                task_id=action.task_id,
-                action_id=action.id,
-                metadata=metadata,
-            )
+            if execute_immediately:
+                self.action_history.mark_executed(action.id)
+                self._log(
+                    RuntimeEventType.ACTION_EXECUTED,
+                    entity_id=action.entity_id,
+                    signal_id=signal_id,
+                    task_id=action.task_id,
+                    action_id=action.id,
+                    metadata=metadata,
+                )
         return action
+
+    def complete_action(self, action_id: str, *, result: Any = None) -> ActionHistoryEntry | None:
+        """Complete a previously recorded pending Action and publish its outcome."""
+
+        entry = self.action_history.mark_executed(action_id, result=result)
+        if entry is None:
+            return None
+        self._log(
+            RuntimeEventType.ACTION_EXECUTED,
+            entity_id=entry.entity_id,
+            signal_id=entry.signal_id,
+            task_id=entry.task_id,
+            action_id=entry.id,
+            metadata={
+                "action_type": entry.type,
+                "parameters": entry.parameters.copy(),
+                "result": json_safe(result),
+            },
+        )
+        return entry
+
+    def fail_action(
+        self, action_id: str, error: BaseException | str
+    ) -> ActionHistoryEntry | None:
+        """Fail a previously recorded pending Action and publish its outcome."""
+
+        entry = self.action_history.mark_failed(action_id, error)
+        if entry is None:
+            return None
+        self._log(
+            RuntimeEventType.ERROR,
+            entity_id=entry.entity_id,
+            signal_id=entry.signal_id,
+            task_id=entry.task_id,
+            action_id=entry.id,
+            metadata={
+                "operation": "action.execute",
+                "action_type": entry.type,
+                "message": str(error),
+            },
+        )
+        return entry
 
     def _collect_result(self, result: Any, entity: Entity, task: Task) -> None:
         if isinstance(result, Action):

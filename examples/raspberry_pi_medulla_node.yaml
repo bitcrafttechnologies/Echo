@@ -1,0 +1,37 @@
+protocol: medulla/1
+
+node:
+  id: workshop-pi
+  name: Workshop Pi
+  type: edge
+
+provider:
+  id: workshop-pi
+
+transport:
+  type: websocket
+  address: ws://0.0.0.0:8765/medulla
+
+metadata:
+  implementation: medulla-node
+  version: 0.8
+
+discovery:
+  approval_mode: manual
+
+echo:
+  transport: websocket
+  endpoint: ws://192.168.1.50:8765/medulla
+
+connection_requirements:
+  identity:
+    required: true
+    scopes:
+      - identity.basic
+
+capabilities: []
+signals: []
+resources: []
+
+health:
+  supported: true

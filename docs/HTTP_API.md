@@ -42,6 +42,10 @@ app = create_app(runtime_service)
 | `PATCH` | `/configuration` | `update_configuration()` |
 | `GET` | `/providers` | `inspect_providers()` |
 | `PATCH` | `/providers/mode` | `set_provider_mode()` |
+| `GET` | `/medulla/nodes` | `get_medulla_nodes()` |
+| `GET` | `/medulla/nodes/{node_id}` | `inspect_medulla_node()` |
+| `POST` | `/medulla/nodes/{node_id}/decision` | `decide_medulla_node()` |
+| `POST` | `/medulla/nodes/{node_id}/authorization` | `authorize_medulla_node()` |
 | `POST` | `/inference` | `infer()` |
 | `POST` | `/configuration/reload` | `reload_configuration()` |
 | `GET` | `/entities` | `get_entities()` |
@@ -104,6 +108,16 @@ Provider mode writes accept `{"mode":"auto"}`, with `remote`, `lan`, and
 plus optional structured `context`, `parameters`, `metadata`, and `request_id`. Provider inspection
 returns configured provider metadata, health, active provider/model, latest
 latency, recent failures, and bounded per-request serving-provider history.
+
+Medulla Node inspection returns declarative manifests, transport/lifecycle
+state, advertised capabilities, requested requirements, granted scopes, and
+the recorded approval reason. A decision body is one of
+`{"decision":"approve|decline|block|reconsider|unblock","reason":"..."}`.
+Approval does not grant requirements. The separate authorization endpoint
+accepts `{"authorization": {...}}`; deterministic Medulla policy validates the
+contents before the Node can become `ACTIVE`. Actions remain disabled before
+that state. See `docs/MEDULLA_NODE_DEVELOPMENT.md` for the complete standalone
+Node workflow and configuration examples.
 
 `POST /configuration/reload` accepts no path or body. It reloads the file owned
 by the host's `RuntimeConfigurationManager`, preventing remote clients from

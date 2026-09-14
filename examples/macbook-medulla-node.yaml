@@ -1,0 +1,32 @@
+protocol: medulla/1
+node:
+  id: nathans-macbook
+  name: Nathan's MacBook
+  type: computer
+provider:
+  id: nathans-macbook
+transport:
+  type: websocket
+metadata:
+  implementation: macbook-medulla-node
+  version: 0.1
+discovery:
+  approval_mode: manual
+echo:
+  transport: websocket
+  endpoint: ws://127.0.0.1:8765/medulla
+connection_requirements: {}
+capabilities: []
+signals: []
+resources: []
+health:
+  supported: true
+macbook:
+  file_roots:
+    - ~/Desktop
+  telemetry_interval: 60
+  maximum_file_bytes: 262144
+  location:
+    latitude: 33.4484
+    longitude: -112.074
+    label: Phoenix

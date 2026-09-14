@@ -66,6 +66,7 @@ from echo.runtime_replay import (
     ReplayTiming,
     RuntimeSignalReplay,
 )
+from medulla_protocol import AuthorizedRequirements, NodeApprovalDecision
 
 
 class RuntimeServiceError(Exception):
@@ -545,6 +546,18 @@ class RuntimeServiceProtocol(Protocol):
         self, values: Mapping[str, Any]
     ) -> ConfigurationReloadResult: ...
 
+    def get_medulla_nodes(self) -> tuple[dict[str, Any], ...]: ...
+
+    def inspect_medulla_node(self, node_id: str) -> dict[str, Any]: ...
+
+    async def decide_medulla_node(
+        self, node_id: str, decision: str, reason: str | None = None
+    ) -> dict[str, Any]: ...
+
+    async def authorize_medulla_node(
+        self, node_id: str, authorization: Mapping[str, Any]
+    ) -> dict[str, Any]: ...
+
 
 class RuntimeService:
     """Stable facade through which adapters and tests control one Runtime."""
@@ -557,6 +570,7 @@ class RuntimeService:
         provider_router: ProviderRouter | None = None,
         configuration_manager: RuntimeConfigurationManager | None = None,
         restart_coordinator: GracefulRestartCoordinator | None = None,
+        node_host: Any | None = None,
         recording_queue_capacity: int = 1024,
     ) -> None:
         if not isinstance(runtime, Runtime):
@@ -612,6 +626,7 @@ class RuntimeService:
         self._provider_router = provider_router
         self._configuration_manager = configuration_manager
         self._restart_coordinator = restart_coordinator
+        self._node_host = node_host
         self._restart_operation: RestartOperationResult | None = None
         self._restart_task: asyncio.Task[None] | None = None
         self._recording: RuntimeSessionRecorder | None = None
@@ -777,6 +792,47 @@ class RuntimeService:
             accepting_work=snapshot["accepting_work"],
             restart=snapshot["restart"],
         )
+
+    def get_medulla_nodes(self) -> tuple[dict[str, Any], ...]:
+        if self._node_host is None:
+            return ()
+        return tuple(self._node_host.inspect_node(node_id) for node_id in self._node_host.node_ids)
+
+    def inspect_medulla_node(self, node_id: str) -> dict[str, Any]:
+        self._validate_identifier(node_id, "node_id")
+        if self._node_host is None or node_id not in self._node_host.node_ids:
+            raise ResourceNotFoundError("Medulla Node not found", details={"node_id": node_id})
+        return self._node_host.inspect_node(node_id)
+
+    async def decide_medulla_node(
+        self, node_id: str, decision: str, reason: str | None = None
+    ) -> dict[str, Any]:
+        self.inspect_medulla_node(node_id)
+        try:
+            if decision == "reconsider":
+                await self._node_host.reconsider(node_id)
+            elif decision == "unblock":
+                if not self._node_host.unblock(node_id):
+                    raise ValueError("node is not blocked")
+                await self._node_host.reconsider(node_id)
+            else:
+                await self._node_host.decide(node_id, NodeApprovalDecision(decision), reason=reason)
+        except (ConnectionError, KeyError, TypeError, ValueError, PermissionError) as error:
+            raise InvalidRequestError(str(error), details={"node_id": node_id}) from error
+        return self._node_host.inspect_node(node_id)
+
+    async def authorize_medulla_node(
+        self, node_id: str, authorization: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        self.inspect_medulla_node(node_id)
+        if not isinstance(authorization, Mapping):
+            raise InvalidRequestError("authorization must be an object")
+        try:
+            grant = AuthorizedRequirements.from_dict(dict(authorization))
+            await self._node_host.authorize(node_id, grant)
+        except (ConnectionError, TypeError, ValueError, PermissionError) as error:
+            raise InvalidRequestError(str(error), details={"node_id": node_id}) from error
+        return self._node_host.inspect_node(node_id)
 
     async def start_recording(
         self, request: StartRecordingRequest

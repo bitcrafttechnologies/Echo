@@ -462,3 +462,226 @@ Echo Core.
 Phase 9A through 9E use the `0.9.x` line. Phase 9F begins the Medulla node
 iteration series at `0.9-medulla_node-0.1`; Phase 9G is
 `0.9-medulla_node-0.2`, and Phase 9H is `0.9-medulla_node-0.3`.
+
+## Phase 9I-A (`0.9-node-0.1`): standalone package boundary
+
+The standalone node line uses the shorter `0.9-node-0.#` branch scheme. Phase
+9I-A is `0.9-node-0.1`; Phase 9I-B is `0.9-node-0.2`.
+
+`medulla_protocol` owns the versioned, finite-JSON capability, manifest,
+resource, Signal-description, requirement, and wire-envelope models. Echo
+re-exports these shared types, preserving the Phase 9H public API and serialized
+shape. The protocol package imports neither Echo cognition nor `medulla_node`.
+
+`medulla_node` owns only configuration and process lifecycle scaffolding in this
+increment. Its `medulla-node` entry point provides help and version output. It
+does not discover peers, negotiate connections, authenticate, approve actions,
+load credentials, make autonomous decisions, or communicate with hardware.
+
+## Phase 9I-B (`0.9-node-0.2`): node manifest and configuration
+
+`medulla-node.yaml` is parsed by a deliberately restricted, dependency-free
+YAML subset. Mappings, sequences, strings, finite numbers, booleans, nulls, and
+inline JSON collections are accepted. YAML object tags, anchors, aliases, merge
+keys, duplicate keys, unknown configuration fields, and non-JSON values are
+rejected. Configuration data cannot name an import target, callback, shell
+command, or serialized Python object.
+
+The configuration declares node and provider identity, protocol, one transport
+endpoint, implementation metadata, capabilities, produced Signals, resources,
+and health support. Registered adapters contribute only typed protocol
+descriptions. `build_node_manifest()` combines those declarations and runs the
+existing Phase 9H validation, including provider ownership and duplicate
+capability, Signal, endpoint, and resource checks.
+
+All configuration commands are offline:
+
+```console
+medulla-node init [path]
+medulla-node validate [path]
+medulla-node manifest [path]
+medulla-node manifest [path] --json
+```
+
+`init` refuses to overwrite an existing file. `validate` parses and builds the
+manifest without advertising it. `manifest` renders the same validated object
+as a readable inventory, while `--json` emits its exact serializable form.
+
+## Phase 9I-C (`0.9-node-0.3`): adapter runtime
+
+`MedullaAdapter` is the hardware-neutral local execution boundary. Every
+adapter declares a stable ID plus capability, produced-Signal, and resource
+descriptions; implements asynchronous `start()`, `execute()`, and `stop()`;
+and may emit typed `AdapterEvent` values through the sink attached by its node.
+Adapters contain device-specific behavior, while the node owns their lifecycle
+and routing.
+
+The runtime validates the combined manifest before registration or startup.
+An Action resolves by stable capability ID or unambiguous capability name to
+one adapter. The capability must be available, and any supplied resource ID
+must belong to that adapter. Unknown Actions, unavailable capabilities, invalid
+resources, adapter exceptions, and non-JSON results return structured rejected
+or failed outcomes and never fall through to another adapter.
+
+Adapter events must match the adapter's declared Signal and resource inventory.
+Accepted events become Echo-compatible Signal-shaped envelopes with node,
+provider, adapter, resource, Signal type, UTC timestamp, correlation ID, and a
+node-local monotonic sequence number in provenance metadata.
+
+`DevelopmentAdapter` is the deterministic reference implementation. It exposes
+`dev.echo`, `counter.increment`, and `counter.reset`; emits `counter.changed`;
+and owns `counter.main`. It uses only in-memory state and requires neither Echo
+nor a network or hardware dependency.
+
+## Phase 9I-D (`0.9-node-0.4`): standalone transport
+
+The standalone node may declare one explicit Echo destination:
+
+```yaml
+echo:
+  transport: websocket
+  endpoint: ws://192.168.1.50:8765/medulla
+```
+
+No address is discovered or inferred. `NodeWebSocketTransport` uses the
+existing versioned `echo.medulla` WebSocket messages. Each connection sends a
+node hello, its actual Phase 9H manifest, and a health/availability status.
+It forwards normalized adapter Signals, accepts existing Echo Action messages,
+routes them through the adapter runtime, and returns correlated structured
+results. Failed sessions reconnect with bounded exponential backoff and
+reannounce the full manifest.
+
+Heartbeat intervals and timeouts are finite positive configuration values.
+Pings and pongs update reachability as `reachable`, `healthy`, or
+`unreachable`; a missing pong ends only that socket session and starts
+reconnection. The transport lifecycle is `STARTING`, `CONNECTING`, `CONNECTED`,
+`DISCONNECTED`, `RECONNECTING`, or `STOPPED`. These are connection facts, never
+pairing, authorization, trust, or `ACTIVE` state.
+
+`EchoNodeWebSocketHost` is the Echo-side listener counterpart. It validates the
+hello and manifest identity, applies the real Phase 9H manifest to the node
+directory, receives validated Echo Signals, sends existing Echo Actions, and
+correlates node results. Run a configured node with:
+
+```console
+medulla-node run medulla-node.yaml --development
+```
+
+The development flag is explicit and loads only the deterministic in-memory
+adapter; configuration never imports executable adapter code.
+
+## Phase 9I-E (`0.9-node-0.5`): connection requirements
+
+A standalone node can add declarative requirements to its manifest:
+
+```yaml
+connection_requirements:
+  identity:
+    required: true
+    scopes:
+      - identity.basic
+  credentials:
+    - id: weather_api
+      type: secret
+      required: true
+  permissions:
+    - location.coarse
+  protocol_features:
+    - heartbeat.v1
+  entity_capabilities:
+    - location.current
+```
+
+The complete requirement contract also supports required metadata keys and
+session features/metadata. Credential entries are descriptors only: manifests
+never contain credential values. All requirement objects are closed,
+ordinary-JSON data and cannot contain imports, callbacks, or executable
+objects.
+
+Entity identity disclosure is scoped explicitly as `identity.basic`,
+`identity.profile`, or `identity.embodiment`. The `identity.basic` payload type
+can contain only `entity_id`, `display_name`, and `entity_type`. It cannot
+contain memory, conversation history, relationships, reflection, private goals
+or state, credentials, private traits, system prompts, or configuration. Phase
+9I-E defines and inspects the request but sends no identity payload.
+
+For each explicit WebSocket session Echo records:
+
+```text
+CONNECTED_TRANSPORT -> MANIFEST_RECEIVED -> COMPATIBLE
+                    -> REQUIREMENTS_RECEIVED -> AWAITING_APPROVAL
+```
+
+`UNSATISFIED`, `DENIED_SCOPE`, `AUTH_FAILED`, and `INCOMPATIBLE` are defined
+failure states. Successful Phase 9I-E negotiation stops at
+`AWAITING_APPROVAL`; there is no grant, autonomous decision, authorization, or
+Entity activation in this phase. Transport reachability remains a separate
+status dimension.
+
+## Phase 9I-F through 9I-H (`0.9-node-0.6`–`0.9-node-0.8`)
+
+Manual connection approval has three distinct outcomes: approve, decline, and
+block. Decline keeps a candidate available for explicit reconsideration. Block
+suppresses future approval requests until `unblock()` removes it. Approval
+alone does not authorize requirements: Echo must submit an
+`AuthorizedRequirements` object, the node validates it against its own
+manifest, and the node acknowledges authentication before either side enters
+`ACTIVE`.
+
+Echo refuses Actions before `ACTIVE`, the node independently rejects early
+Actions, pre-authorization Signals do not cross the boundary, and capability
+registration occurs only after authentication. `identity.basic` remains the
+only implemented identity payload and contains only the three public identity
+fields.
+
+Autonomous approval is an explicit candidate evaluator, not auto-connect:
+
+```toml
+[discovery]
+approval_mode = "autonomous"
+```
+
+The evaluator may consider current Tasks/goals, embodiment, missing
+capabilities, providers, environment, and the candidate inventory. It may only
+approve or decline and must record a reason. A separate human-configured,
+deterministic authorization policy selects any scopes. With no evaluator the
+candidate stays at `AWAITING_APPROVAL`; with no matching authorization policy
+an approved candidate cannot become active. Declined nodes can be reevaluated
+against later task context.
+
+Credential grants contain only validated references such as
+`secret://weather_api_key`. Secret values never enter manifests, lifecycle
+events, audit inspection, Signals, replay data, Entity memory, or cognition
+context. Audit inspection records first/last seen time, advertised manifest,
+requirements, approval mode and reason, redacted grants, activation,
+disconnect, and the lifecycle event history.
+
+The lifecycle event stream includes `NodeDiscovered`, `NodeAvailable`,
+`NodeCompatible`, `NodeApprovalRequested`, `NodeApproved`, `NodeDeclined`,
+`NodeBlocked`, `NodeRequirementsAuthorized`, `NodeAuthenticationFailed`,
+`NodeConnected`, `NodeDisconnected`, `NodeUnavailable`, and `NodeReconnected`.
+
+## Phase 9I-I (`0.9-node-0.9`): desktop embodiment and web research
+
+Two concrete packages now sit above the generic standalone runtime.
+`macbook-medulla-node` exposes only configured file roots and read-only
+battery, system health, local date/time, coarse location, and Open-Meteo
+weather. It emits battery, health, and date/time telemetry. The separate
+`web-medulla-node` exposes keyword search and bounded text retrieval through an
+HTTPS domain allowlist that includes GitHub, MIT OpenCourseWare, arXiv,
+OpenStax, DOAJ, Project Gutenberg, and Wikinews. It rejects URL credentials,
+nonstandard ports, private network addresses, and redirects outside policy.
+
+Echo's explicit WebSocket listener is enabled under `[medulla]`; it remains
+separate from discovery. The management API, TUI, and web Console show observed
+manifests and expose approve, decline, block, reconsider, unblock, and separate
+authorization operations. Active read-only capabilities can provide bounded
+`medulla_observations` to inference when a user prompt asks for matching
+computer or research context. See `MEDULLA_NODE_DEVELOPMENT.md`.
+
+`medulla-node status` displays static identity, transport, Echo destination,
+lifecycle, adapters, capabilities, Signals, resources, and health. The optional
+GPIO adapter is loaded explicitly with `--gpio-output BCM_PIN` and
+`--gpio-input BCM_PIN`. It uses gpiozero on a Pi and an injected backend in
+automated tests. See `RASPBERRY_PI_VALIDATION.md`; the real-hardware result is
+not complete until that runbook is executed on a physical Pi.

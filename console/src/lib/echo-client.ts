@@ -217,6 +217,27 @@ export type RuntimeLogEntry = RuntimeEvent & {
   severity: 'info' | 'warning' | 'error' | string;
 };
 
+export type MedullaNodeInspection = {
+  node_id: string;
+  first_seen_at: string | null;
+  last_seen_at: string | null;
+  active_at: string | null;
+  disconnected_at: string | null;
+  reachability: string;
+  negotiation_state: string | null;
+  approval_mode: 'manual' | 'autonomous';
+  decision_reason: string | null;
+  granted_scopes: Record<string, unknown> | null;
+  advertised_manifest: {
+    node?: { id?: string; display_name?: string; type?: string };
+    capabilities?: Array<{ name: string; description?: string }>;
+    signals?: Array<{ name: string }>;
+    resources?: Array<{ id: string; description?: string }>;
+  } | null;
+  approval_request: { provides: string[]; requires: string[] } | null;
+  events: Array<{ type: string; timestamp: string; details: Record<string, unknown> }>;
+};
+
 async function responseError(response: Response, fallback: string): Promise<Error> {
   try {
     const body = (await response.json()) as {
@@ -301,6 +322,54 @@ export async function setProviderMode(
   });
   if (!response.ok) throw await responseError(response, 'Provider mode update failed');
   return (await response.json()) as ProviderInspection;
+}
+
+export async function fetchMedullaNodes(
+  fetcher: typeof fetch,
+  apiBase = '/api'
+): Promise<MedullaNodeInspection[]> {
+  const response = await fetcher(`${apiBase.replace(/\/$/, '')}/medulla/nodes`, {
+    headers: { accept: 'application/json' }
+  });
+  if (!response.ok) throw await responseError(response, 'Medulla Node inspection failed');
+  return (await response.json()) as MedullaNodeInspection[];
+}
+
+export async function decideMedullaNode(
+  fetcher: typeof fetch,
+  nodeId: string,
+  decision: 'approve' | 'decline' | 'block' | 'reconsider' | 'unblock',
+  reason: string | null,
+  apiBase = '/api'
+): Promise<MedullaNodeInspection> {
+  const response = await fetcher(
+    `${apiBase.replace(/\/$/, '')}/medulla/nodes/${encodeURIComponent(nodeId)}/decision`,
+    {
+      method: 'POST',
+      headers: { accept: 'application/json', 'content-type': 'application/json' },
+      body: JSON.stringify({ decision, ...(reason ? { reason } : {}) })
+    }
+  );
+  if (!response.ok) throw await responseError(response, 'Medulla Node decision failed');
+  return (await response.json()) as MedullaNodeInspection;
+}
+
+export async function authorizeMedullaNode(
+  fetcher: typeof fetch,
+  nodeId: string,
+  authorization: Record<string, unknown>,
+  apiBase = '/api'
+): Promise<MedullaNodeInspection> {
+  const response = await fetcher(
+    `${apiBase.replace(/\/$/, '')}/medulla/nodes/${encodeURIComponent(nodeId)}/authorization`,
+    {
+      method: 'POST',
+      headers: { accept: 'application/json', 'content-type': 'application/json' },
+      body: JSON.stringify({ authorization })
+    }
+  );
+  if (!response.ok) throw await responseError(response, 'Medulla authorization failed');
+  return (await response.json()) as MedullaNodeInspection;
 }
 
 export async function reloadConfiguration(

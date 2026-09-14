@@ -20,6 +20,7 @@ from echo.medulla.capability import (
 )
 from echo.medulla.router import CapabilityRouteBinding, CapabilityRouter
 from echo.medulla.wire import WireMessage, WireMessageType, make_wire_message
+from medulla_protocol.requirements import ConnectionRequirements
 
 
 NODE_PROTOCOL_NAME = "medulla"
@@ -545,6 +546,9 @@ class MedullaRemoteNodeStatus:
     capability_ids: tuple[str, ...]
     signal_types: tuple[str, ...]
     resource_ids: tuple[str, ...]
+    connection_requirements: ConnectionRequirements = field(
+        default_factory=ConnectionRequirements
+    )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -554,6 +558,7 @@ class MedullaRemoteNodeStatus:
             "capability_ids": list(self.capability_ids),
             "signal_types": list(self.signal_types),
             "resource_ids": list(self.resource_ids),
+            "connection_requirements": self.connection_requirements.to_dict(),
         }
 
 
@@ -581,6 +586,13 @@ class MedullaNodeDirectory:
         self._registry = registry
         self._router = router
         self._nodes: dict[str, _RemoteNodeRecord] = {}
+
+    def validate_manifest(self, manifest: MedullaNodeManifest) -> None:
+        """Check registry compatibility without registering or activating a node."""
+
+        if not isinstance(manifest, MedullaNodeManifest):
+            raise TypeError("manifest must be MedullaNodeManifest")
+        self._preflight(manifest, replacing=manifest.node.node_id in self._nodes)
 
     def connect(
         self,
@@ -708,6 +720,7 @@ class MedullaNodeDirectory:
             resource_ids=tuple(
                 sorted(item.resource_id for item in manifest.resources)
             ),
+            connection_requirements=manifest.connection_requirements,
         )
 
     def inspect(self) -> tuple[MedullaRemoteNodeStatus, ...]:
@@ -733,6 +746,9 @@ class MedullaNodeDirectory:
                         item.resource_id
                         for item in self._nodes[node_id].manifest.resources
                     )
+                ),
+                connection_requirements=(
+                    self._nodes[node_id].manifest.connection_requirements
                 ),
             )
             for node_id in sorted(self._nodes)
@@ -765,6 +781,26 @@ class MedullaNodeDirectory:
         except Exception as error:
             raise NodeProtocolError("registry_conflict", str(error)) from error
 
+
+# Echo retains the directory/lifecycle implementation here, while its public
+# manifest types are the exact shared protocol classes used by standalone nodes.
+from medulla_protocol.manifest import (
+    MAX_NODE_MANIFEST_ITEMS as MAX_NODE_MANIFEST_ITEMS,
+    NODE_PROTOCOL as NODE_PROTOCOL,
+    NODE_PROTOCOL_NAME as NODE_PROTOCOL_NAME,
+    NODE_PROTOCOL_VERSION as NODE_PROTOCOL_VERSION,
+    MedullaNodeEndpoint as MedullaNodeEndpoint,
+    MedullaNodeHealth as MedullaNodeHealth,
+    MedullaNodeIdentity as MedullaNodeIdentity,
+    MedullaNodeManifest as MedullaNodeManifest,
+    MedullaNodeResource as MedullaNodeResource,
+    MedullaNodeSecurity as MedullaNodeSecurity,
+    MedullaNodeSignal as MedullaNodeSignal,
+    MedullaNodeType as MedullaNodeType,
+    NodeProtocolError as NodeProtocolError,
+    node_manifest_from_message as node_manifest_from_message,
+    node_manifest_message as node_manifest_message,
+)
 
 NodeConnectionState = MedullaNodeConnectionState
 NodeDirectory = MedullaNodeDirectory

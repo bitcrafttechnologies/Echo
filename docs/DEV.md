@@ -9,6 +9,10 @@ Echo owns the entity’s continuity. Models provide inference; they do not own i
 > Current implementation: `0.7.7`  
 > Requires Python 3.11 or later.
 
+Standalone node authors should also read the dedicated
+[Medulla Node development guide](MEDULLA_NODE_DEVELOPMENT.md), including the
+MacBook embodiment and allowlisted web research examples.
+
 ## What you build with Echo
 
 A developer defines one or more **Entities** and registers asynchronous handlers for the **Signals** they can receive.

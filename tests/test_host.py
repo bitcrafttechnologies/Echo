@@ -29,6 +29,24 @@ from echo.host import (
 
 
 class HostChatHandlerTests(unittest.TestCase):
+    def test_configured_host_can_start_explicit_node_listener(self) -> None:
+        try:
+            from fastapi.testclient import TestClient
+        except ImportError:
+            self.skipTest("install the API extra")
+        with TemporaryDirectory() as temporary_directory:
+            config_path = Path(temporary_directory) / "echo.toml"
+            config_path.write_text(
+                '[persistence]\nenabled = false\n\n[medulla]\nenabled = true\nendpoint = "ws://127.0.0.1:0/medulla"\n',
+                encoding="utf-8",
+            )
+            app, _config, runtime, _service = build_host(config_path)
+            try:
+                with TestClient(app) as client:
+                    self.assertEqual(client.get("/medulla/nodes").json(), [])
+            finally:
+                runtime.stop()
+
     def test_installed_host_resolves_launcher_entity_root(self) -> None:
         with TemporaryDirectory() as temporary_directory:
             entity_root = Path(temporary_directory) / "entities"

@@ -41,13 +41,13 @@ class TmuxSessionManager:
 
     def commands(self, tmux: str = "tmux") -> list[list[str]]:
         commands = [[tmux, "new-session", "-d", "-s", self.session_name, "-n", "dashboard", self._view_command("overview")]]
-        for name, surface in (("chat", "chat"), ("signals", "signals"), ("tasks", "tasks"), ("entity", "entity"), ("providers", "providers"), ("configuration", "configuration"), ("logs", "logs")):
+        for name, surface in (("chat", "chat"), ("signals", "signals"), ("tasks", "tasks"), ("entity", "entity"), ("providers", "providers"), ("medulla", "medulla"), ("configuration", "configuration"), ("logs", "logs")):
             commands.append([tmux, "new-window", "-t", self.session_name, "-n", name, self._view_command(surface)])
         entity_root = self.project_root / "entities"
         editor = shutil.which("nvim") or shutil.which("vi") or "vi"
         commands.append([tmux, "new-window", "-t", self.session_name, "-n", "files", shlex.join([editor, str(entity_root)])])
         commands.append([tmux, "new-window", "-t", self.session_name, "-n", "shell"])
-        for index, name in enumerate(("dashboard", "chat", "signals", "tasks", "entity", "providers", "configuration", "logs"), 1):
+        for index, name in enumerate(("dashboard", "chat", "signals", "tasks", "entity", "providers", "medulla", "configuration", "logs"), 1):
             commands.append([tmux, "bind-key", "-n", f"M-{index}", "select-window", "-t", f"{self.session_name}:{name}"])
         commands.append([tmux, "select-window", "-t", f"{self.session_name}:dashboard"])
         return commands

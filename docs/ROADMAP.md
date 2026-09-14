@@ -326,11 +326,43 @@ transport, Phase 9E's serial transport, Phase 9F's capability contract, Phase
 - Phase 9H (`0.9-medulla_node-0.3`): closed versioned remote-node manifests,
   capability/Signal/resource mapping, health and pairing metadata, lifecycle
   registration, disconnect disablement, and reconnect restoration — completed.
+- Phase 9I-A (`0.9-node-0.1`): standalone `medulla_node` package boundary,
+  dependency-free shared protocol package, inert lifecycle scaffold, and the
+  installable `medulla-node` CLI entry point — completed.
+- Phase 9I-B (`0.9-node-0.2`): strict declarative YAML configuration, offline
+  Phase 9H manifest composition from configuration and registered adapter
+  descriptions, and `init`, `validate`, and `manifest` CLI commands — completed.
+- Phase 9I-C (`0.9-node-0.3`): generic asynchronous adapter lifecycle,
+  manifest aggregation, fail-closed Action routing and resource validation,
+  provenance-rich Signal normalization, and deterministic development adapter
+  — completed.
+- Phase 9I-D (`0.9-node-0.4`): explicitly configured reconnecting standalone
+  WebSocket sessions, manifest/availability announcement, bounded heartbeat
+  health, bidirectional Action/Signal flow, and an Echo-side node listener —
+  completed.
+- Phase 9I-E (`0.9-node-0.5`): declarative connection requirements, scoped
+  Entity identity disclosure contracts, and inspectable negotiation through
+  `AWAITING_APPROVAL` without grants or automatic authorization — completed.
+- Phase 9I-F (`0.9-node-0.6`): explicit manual approve, decline, block,
+  reconsideration, separate requirement authorization, node authentication,
+  and fail-closed `ACTIVE` Action/Signal gating — completed.
+- Phase 9I-G (`0.9-node-0.7`): visible autonomous candidate evaluation with
+  task/capability context and a separate deterministic authorization policy;
+  autonomous mode has no unconditional approval fallback — completed.
+- Phase 9I-H (`0.9-node-0.8`): secret references, redacted lifecycle audit,
+  hostile-session containment, CLI status, and a gpiozero-backed Raspberry Pi
+  adapter with injected-backend end-to-end coverage — implementation complete;
+  physical Raspberry Pi validation remains pending hardware access.
+- Phase 9I-I (`0.9-node-0.9`): read-only MacBook files/system/location/weather,
+  battery/health/time telemetry, allowlisted web search and URL retrieval,
+  manual management API approval, TUI/web inspection and editing, and
+  prompt-time use of active node observations — completed.
+- Phase 9J automatic discovery must not begin until the physical Raspberry Pi
+  validation gate is recorded as passed.
 - Later Phase 9 subphases: additional network/device transports,
   capability and Signal-handler discovery, registration and routing, node
   communication, permissions, pairing, authorization, and trust — deferred.
-- Phase 9F begins the Medulla node iteration branch series; subsequent phases
-  increment its final component.
+- The standalone node branch series uses `0.9-node-0.#` beginning with 9I-A.
 
 ## Persistent character vertical track
 

@@ -32,6 +32,7 @@ from echo.providers import (
     ProviderRouter,
     ProviderSlot,
 )
+from medulla_protocol import NodeApprovalMode
 
 
 DEFAULT_CONFIG_PATH = Path("echo.toml")
@@ -197,6 +198,19 @@ class ConsoleConfig:
 
 
 @dataclass(slots=True, kw_only=True, frozen=True)
+class DiscoveryConfig:
+    """Connection-offer policy; network discovery itself remains disabled."""
+
+    approval_mode: NodeApprovalMode = NodeApprovalMode.MANUAL
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
+class MedullaNodeHostConfig:
+    enabled: bool = False
+    endpoint: str = "ws://127.0.0.1:8765/medulla"
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
 class EchoConfig:
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
@@ -205,6 +219,8 @@ class EchoConfig:
     providers: ProviderRoutingConfig = field(default_factory=ProviderRoutingConfig)
     api: ApiServerConfig = field(default_factory=ApiServerConfig)
     console: ConsoleConfig = field(default_factory=ConsoleConfig)
+    discovery: DiscoveryConfig = field(default_factory=DiscoveryConfig)
+    medulla: MedullaNodeHostConfig = field(default_factory=MedullaNodeHostConfig)
 
     def create_runtime(self, entities: Iterable[Entity] = ()) -> Runtime:
         return Runtime(
@@ -307,6 +323,9 @@ _ENV_OVERRIDES: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
     (("console", "request_timeout_seconds"), ("ECHO_CONSOLE_REQUEST_TIMEOUT_SECONDS",)),
     (("console", "poll_interval_seconds"), ("ECHO_CONSOLE_POLL_INTERVAL_SECONDS",)),
     (("console", "session_name"), ("ECHO_CONSOLE_SESSION_NAME",)),
+    (("discovery", "approval_mode"), ("ECHO_NODE_APPROVAL_MODE",)),
+    (("medulla", "enabled"), ("ECHO_MEDULLA_ENABLED",)),
+    (("medulla", "endpoint"), ("ECHO_MEDULLA_ENDPOINT",)),
 )
 
 
@@ -493,7 +512,7 @@ class _Reader:
 
 def _parse_config(raw: Mapping[str, Any], *, source: str | Path | None) -> EchoConfig:
     reader = _Reader(raw)
-    allowed_top = {"runtime", "logging", "history", "persistence", "providers", "api", "console"}
+    allowed_top = {"runtime", "logging", "history", "persistence", "providers", "api", "console", "discovery", "medulla"}
     for key in raw:
         if key not in allowed_top:
             reader.issue(key, "unknown top-level configuration table")
@@ -529,6 +548,17 @@ def _parse_config(raw: Mapping[str, Any], *, source: str | Path | None) -> EchoC
         "console",
         {"api_url", "request_timeout_seconds", "poll_interval_seconds", "session_name"},
     )
+    discovery = reader.section("discovery", {"approval_mode"})
+    medulla = reader.section("medulla", {"enabled", "endpoint"})
+
+    approval_mode_value = str(
+        reader.text(discovery, "discovery.approval_mode", "manual")
+    ).lower()
+    try:
+        approval_mode = NodeApprovalMode(approval_mode_value)
+    except ValueError:
+        reader.issue("discovery.approval_mode", "must be 'manual' or 'autonomous'")
+        approval_mode = NodeApprovalMode.MANUAL
 
     level = str(reader.text(logging_section, "logging.level", "INFO")).upper()
     if level not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
@@ -635,6 +665,10 @@ def _parse_config(raw: Mapping[str, Any], *, source: str | Path | None) -> EchoC
         reader.text(console, "console.api_url", "http://127.0.0.1:8000")
     )
     _validate_url(reader, "console.api_url", console_url)
+    medulla_endpoint = str(reader.text(medulla, "medulla.endpoint", "ws://127.0.0.1:8765/medulla"))
+    parsed_medulla = urlsplit(medulla_endpoint)
+    if parsed_medulla.scheme != "ws" or not parsed_medulla.hostname or parsed_medulla.port is None:
+        reader.issue("medulla.endpoint", "must be an absolute ws:// URL with an explicit port")
 
     extra_args_value = offline.get("extra_args", ())
     if isinstance(extra_args_value, list) and all(
@@ -761,6 +795,11 @@ def _parse_config(raw: Mapping[str, Any], *, source: str | Path | None) -> EchoC
             request_timeout_seconds=reader.number(console, "console.request_timeout_seconds", 3.0),
             poll_interval_seconds=reader.number(console, "console.poll_interval_seconds", 1.0),
             session_name=str(reader.text(console, "console.session_name", "echo-core")),
+        ),
+        discovery=DiscoveryConfig(approval_mode=approval_mode),
+        medulla=MedullaNodeHostConfig(
+            enabled=reader.boolean(medulla, "medulla.enabled", False),
+            endpoint=medulla_endpoint,
         ),
     )
     if reader.issues:

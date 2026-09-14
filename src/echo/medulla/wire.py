@@ -267,3 +267,18 @@ def encode_wire_message(message: WireMessage) -> str:
         separators=(",", ":"),
         sort_keys=True,
     )
+
+
+# Echo-specific Signal/Action conversion stays in this module.  The envelope
+# itself is shared verbatim with standalone nodes.
+from medulla_protocol.messages import (
+    DEFAULT_MAX_MESSAGE_BYTES as DEFAULT_MAX_MESSAGE_BYTES,
+    WIRE_PROTOCOL as WIRE_PROTOCOL,
+    WIRE_VERSION as WIRE_VERSION,
+    WireMessage as WireMessage,
+    WireMessageType as WireMessageType,
+    WireProtocolError as WireProtocolError,
+    decode_wire_message as decode_wire_message,
+    encode_wire_message as encode_wire_message,
+    make_wire_message as make_wire_message,
+)

@@ -57,8 +57,9 @@ def default_registry() -> ConsoleSurfaceRegistry:
         ConsoleSurface("tasks", "Tasks", 4, ("list", "inspect", "cancel")),
         ConsoleSurface("entity", "Entity", 5, ("list", "inspect", "relationships")),
         ConsoleSurface("providers", "Providers", 6, ("inspect", "switch")),
-        ConsoleSurface("configuration", "Configuration", 7, ("inspect", "edit", "reload")),
-        ConsoleSurface("logs", "Logs", 8, ("list", "filter")),
+        ConsoleSurface("medulla", "Medulla Nodes", 7, ("inspect", "approve", "authorize", "decline", "block")),
+        ConsoleSurface("configuration", "Configuration", 8, ("inspect", "edit", "reload")),
+        ConsoleSurface("logs", "Logs", 9, ("list", "filter")),
     ):
         registry.register(surface)
     return registry

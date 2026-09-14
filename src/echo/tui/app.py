@@ -189,6 +189,26 @@ def _providers(data: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _medulla(data: dict[str, Any]) -> list[str]:
+    nodes = data.get("medulla_nodes", [])
+    lines = _title(f"Medulla Nodes · {len(nodes)} observed")
+    lines += ["a approve   z authorize JSON   d decline   b block   u unblock/reconsider", ""]
+    if not nodes:
+        return lines + ["No standalone Medulla Nodes have been observed."]
+    for node in nodes:
+        manifest = node.get("advertised_manifest") or {}
+        identity = manifest.get("node") or {}
+        capabilities = [item.get("name", "?") for item in manifest.get("capabilities", [])]
+        requirements = node.get("approval_request") or {}
+        lines += [
+            f"{identity.get('display_name') or node.get('node_id')}  [{node.get('negotiation_state') or 'unknown'}]  {node.get('reachability', 'unknown')}",
+            f"  id={node.get('node_id')} mode={node.get('approval_mode')} reason={node.get('decision_reason') or '—'}",
+            f"  provides={', '.join(capabilities) or 'none'}",
+            f"  requires={', '.join(requirements.get('requires', [])) or 'none'} grants={_json(node.get('granted_scopes') or {}, 70)}",
+        ]
+    return lines
+
+
 def _configuration(data: dict[str, Any]) -> list[str]:
     configuration = data.get("configuration", {})
     lines = [*_title("Effective configuration"), ""]
@@ -223,7 +243,7 @@ def _chat(data: dict[str, Any]) -> list[str]:
     return lines
 
 
-_RENDERERS = {"overview": _overview, "chat": _chat, "signals": _signals, "tasks": _tasks, "entity": _entity, "providers": _providers, "configuration": _configuration, "logs": _logs}
+_RENDERERS = {"overview": _overview, "chat": _chat, "signals": _signals, "tasks": _tasks, "entity": _entity, "providers": _providers, "medulla": _medulla, "configuration": _configuration, "logs": _logs}
 
 
 def render_snapshot(surface: str, data: dict[str, Any], *, width: int = 100, color: bool = False) -> str:
@@ -236,7 +256,7 @@ def render_snapshot(surface: str, data: dict[str, Any], *, width: int = 100, col
     core = "OFFLINE" if state in {"offline", "unavailable"} else "ONLINE"
     header = f"ECHO ◉   entity: {entity}   CORE {core}   runtime: {str(state).upper()}   LOCAL/OFFLINE"
     body = [line[:width] for line in _RENDERERS[surface](data)]
-    footer = "[1] Overview [2] Chat [3] Signals [4] Tasks [5] Entity [6] Providers [7] Config [8] Logs   [:] command [r] refresh [q] quit"
+    footer = "[1] Overview [2] Chat [3] Signals [4] Tasks [5] Entity [6] Providers [7] Nodes [8] Config [9] Logs   [:] command [r] refresh [q] quit"
     output = "\n".join([header[:width], "━" * min(width, len(header) + 8), *body, "", footer[:width]])
     if color:
         output = output.replace("ECHO ◉", f"{ORANGE}{BOLD}ECHO ◉{RESET}", 1)
@@ -289,7 +309,7 @@ class EchoTui:
                 key = os.read(sys.stdin.fileno(), 1).decode(errors="ignore")
                 if key == "q":
                     break
-                if key in "12345678":
+                if key in "123456789":
                     self.surface = self.registry.list()[int(key) - 1].key
                     self.filters = {}
                     data = {}
@@ -319,6 +339,20 @@ class EchoTui:
                             data = {}
                         except Exception as error:
                             self.message = str(error)
+                elif key in "adzbu" and self.surface == "medulla":
+                    node_id = self._read_line("node id › ")
+                    decisions = {"a": "approve", "d": "decline", "b": "block", "u": "unblock"}
+                    try:
+                        if key == "z":
+                            raw = self._read_line("authorization JSON ({} for no requirements) › ") or "{}"
+                            result = await self.client.authorize_medulla_node(node_id, json.loads(raw))
+                        else:
+                            reason = self._read_line("reason (optional) › ") or None
+                            result = await self.client.decide_medulla_node(node_id, decisions[key], reason=reason)
+                        self.message = _json(result, 180)
+                        data = {}
+                    except Exception as error:
+                        self.message = str(error)
         finally:
             termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self._original_terminal)
             sys.stdout.write("\x1b[?25h\x1b[0m\n")

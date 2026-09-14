@@ -24,6 +24,8 @@ class EchoConsoleClient(Protocol):
     async def snapshot(self, surface: str, *, entity_id: str | None = None, filters: Mapping[str, str] | None = None) -> dict[str, Any]: ...
     async def execute(self, command: str) -> dict[str, Any]: ...
     async def chat(self, text: str, *, entity_id: str | None = None) -> dict[str, Any]: ...
+    async def decide_medulla_node(self, node_id: str, decision: str, *, reason: str | None = None) -> dict[str, Any]: ...
+    async def authorize_medulla_node(self, node_id: str, authorization: Mapping[str, Any]) -> dict[str, Any]: ...
 
 
 def _dict(value: Any) -> dict[str, Any]:
@@ -66,6 +68,8 @@ class LocalEchoClient:
             data["providers"] = _dict(await self.service.inspect_providers())
         elif surface == "configuration":
             data["configuration"] = _dict(self.service.inspect_configuration())
+        elif surface == "medulla":
+            data["medulla_nodes"] = list(self.service.get_medulla_nodes())
         elif surface == "chat":
             data["signals"] = [_dict(value) for value in self.service.get_recent_signals(SignalQuery(limit=100, signal_type="UserMessage"))]
             data["actions"] = [_dict(value) for value in self.service.get_actions(ActionQuery(limit=200))]
@@ -83,6 +87,12 @@ class LocalEchoClient:
             EmitSignalRequest(signal=Signal(type="UserMessage", source="console", payload=payload))
         )
         return _dict(value)
+
+    async def decide_medulla_node(self, node_id: str, decision: str, *, reason: str | None = None) -> dict[str, Any]:
+        return await self.service.decide_medulla_node(node_id, decision, reason)
+
+    async def authorize_medulla_node(self, node_id: str, authorization: Mapping[str, Any]) -> dict[str, Any]:
+        return await self.service.authorize_medulla_node(node_id, authorization)
 
 
 class HttpEchoClient:
@@ -156,6 +166,8 @@ class HttpEchoClient:
             data["providers"] = await self._request("/providers")
         elif surface == "configuration":
             data["configuration"] = await self._request("/configuration")
+        elif surface == "medulla":
+            data["medulla_nodes"] = await self._request("/medulla/nodes")
         elif surface == "chat":
             data["signals"], data["actions"] = await asyncio.gather(self._request("/signals?limit=100&signal_type=UserMessage"), self._request("/actions?limit=200"))
         data["filters"] = dict(filters)
@@ -214,3 +226,11 @@ class HttpEchoClient:
         if entity_id:
             payload["entity_id"] = entity_id
         return await self._request("/signals", method="POST", body={"type": "UserMessage", "source": "console", "payload": payload})
+
+    async def decide_medulla_node(self, node_id: str, decision: str, *, reason: str | None = None) -> dict[str, Any]:
+        body: dict[str, Any] = {"decision": decision}
+        if reason: body["reason"] = reason
+        return await self._request(f"/medulla/nodes/{quote(node_id, safe='')}/decision", method="POST", body=body)
+
+    async def authorize_medulla_node(self, node_id: str, authorization: Mapping[str, Any]) -> dict[str, Any]:
+        return await self._request(f"/medulla/nodes/{quote(node_id, safe='')}/authorization", method="POST", body={"authorization": dict(authorization)})
