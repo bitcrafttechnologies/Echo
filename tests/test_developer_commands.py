@@ -23,6 +23,7 @@ from echo import (
     Entity,
     EntityInspectCommand,
     LogsCommand,
+    MemoryQueryCommand,
     ProviderModeCommand,
     ProviderStatusCommand,
     Runtime,
@@ -134,6 +135,7 @@ class DeveloperCommandTests(unittest.IsolatedAsyncioTestCase):
         cases = {
             "runtime status": RuntimeStatusCommand,
             "entity inspect bit": EntityInspectCommand,
+            "memory query bit name": MemoryQueryCommand,
             "signal list": SignalListCommand,
             "signal inspect signal-1": SignalInspectCommand,
             "signal inject observe '{\"value\": 3}'": SignalInjectCommand,

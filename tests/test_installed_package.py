@@ -54,6 +54,93 @@ class InstalledPackageTests(unittest.TestCase):
                 text=True,
             )
 
+            preserved_database = root / "preserved.sqlite3"
+            seed_continuity = subprocess.run(
+                [
+                    str(python),
+                    "-c",
+                    textwrap.dedent(
+                        """
+                        from echo import MemoryService, SQLiteMemoryRepository, user_statement_candidates
+                        from echo.entity.memory_store import DurableMemoryType, MemoryCandidate, MemorySourceType
+
+                        repository = SQLiteMemoryRepository(__import__('sys').argv[1])
+                        service = MemoryService('bit', repository)
+                        service.commit(user_statement_candidates('My name is Tucker.', signal_id='install-1')[0])
+                        service.commit(MemoryCandidate(
+                            content='Conversation: user discussed orbital gardening',
+                            memory_type=DurableMemoryType.EPISODIC,
+                            source_type=MemorySourceType.DIRECT_EXPERIENCE,
+                            source_refs=('signal:install-2',),
+                            confidence=1.0,
+                            importance=0.6,
+                            canonical_key='conversation.install-2',
+                        ), trusted_provenance=True)
+                        repository.close()
+                        """
+                    ),
+                    str(preserved_database),
+                ],
+                env=clean_environment,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(seed_continuity.returncode, 0, seed_continuity.stderr)
+            subprocess.run(
+                [str(python), "-m", "pip", "uninstall", "-y", "echo-runtime"],
+                env=clean_environment,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                [str(python), "-m", "pip", "install", "--no-deps", str(wheel)],
+                env=clean_environment,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            verify_continuity = subprocess.run(
+                [
+                    str(python),
+                    "-c",
+                    textwrap.dedent(
+                        """
+                        from echo import MemoryService, SQLiteMemoryRepository
+                        repository = SQLiteMemoryRepository(__import__('sys').argv[1])
+                        service = MemoryService('bit', repository)
+                        assert service.query('What is my name?')[0].canonical_key == 'user.preferred_name'
+                        assert any(record.memory_type.value == 'episodic' for record in service.query('What did we discuss recently?'))
+                        repository.close()
+                        """
+                    ),
+                    str(preserved_database),
+                ],
+                env=clean_environment,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(verify_continuity.returncode, 0, verify_continuity.stderr)
+
+            fresh_database = root / "fresh.sqlite3"
+            verify_fresh = subprocess.run(
+                [
+                    str(python),
+                    "-c",
+                    "from echo import MemoryService, SQLiteMemoryRepository; "
+                    "r=SQLiteMemoryRepository(__import__('sys').argv[1]); "
+                    "assert MemoryService('bit', r).list() == (); r.close()",
+                    str(fresh_database),
+                ],
+                env=clean_environment,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(verify_fresh.returncode, 0, verify_fresh.stderr)
+
             scripts = environment / ("Scripts" if os.name == "nt" else "bin")
             node_cli = scripts / ("medulla-node.exe" if os.name == "nt" else "medulla-node")
             node_help = subprocess.run(

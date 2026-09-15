@@ -95,6 +95,7 @@ class CommandName(StrEnum):
     REPLAY_NEXT = "replay.next"
     REPLAY_CANCEL = "replay.cancel"
     REPLAY_STATUS = "replay.status"
+    MEMORY_QUERY = "memory.query"
 
 
 def _copy(value: Any) -> Any:
@@ -225,6 +226,22 @@ class EntityInspectCommand:
 
     def __post_init__(self) -> None:
         _require_identifier(self.entity_id, "entity_id")
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
+class MemoryQueryCommand:
+    entity_id: str
+    query: str
+    limit: int | None = 8
+    name: CommandName = field(default=CommandName.MEMORY_QUERY, init=False)
+
+    def __post_init__(self) -> None:
+        _require_identifier(self.entity_id, "entity_id")
+        _require_identifier(self.query, "query")
+        if self.limit is not None and (
+            isinstance(self.limit, bool) or not isinstance(self.limit, int) or self.limit < 0
+        ):
+            raise CommandValidationError("limit must be a non-negative integer")
 
 
 @dataclass(slots=True, kw_only=True, frozen=True)
@@ -384,6 +401,7 @@ DeveloperCommand = (
     | ReplayCancelCommand
     | ReplayStatusCommand
     | EntityInspectCommand
+    | MemoryQueryCommand
     | SignalListCommand
     | SignalInspectCommand
     | SignalInjectCommand
@@ -434,6 +452,7 @@ class DeveloperCommandDispatcher:
                 ReplayCancelCommand,
                 ReplayStatusCommand,
                 EntityInspectCommand,
+                MemoryQueryCommand,
                 SignalListCommand,
                 SignalInspectCommand,
                 SignalInjectCommand,
@@ -501,6 +520,10 @@ class DeveloperCommandDispatcher:
             return self._service.get_replay_status(command.replay_id)
         if isinstance(command, EntityInspectCommand):
             return self._service.inspect_entity(command.entity_id)
+        if isinstance(command, MemoryQueryCommand):
+            return self._service.trace_memory_query(
+                command.entity_id, command.query, limit=command.limit
+            )
         if isinstance(command, SignalListCommand):
             return self._service.get_recent_signals(command.query)
         if isinstance(command, SignalInspectCommand):
@@ -640,6 +663,14 @@ def parse_developer_command(text: str) -> DeveloperCommand:
         return ConfigSetCommand(path=tokens[2], value=value)
     if len(tokens) == 3 and tokens[:2] == ["entity", "inspect"]:
         return EntityInspectCommand(entity_id=tokens[2])
+    if len(tokens) in {4, 5} and tokens[:2] == ["memory", "query"]:
+        limit = 8
+        if len(tokens) == 5:
+            try:
+                limit = int(tokens[4])
+            except ValueError as error:
+                raise CommandParseError("memory query limit must be an integer") from error
+        return MemoryQueryCommand(entity_id=tokens[2], query=tokens[3], limit=limit)
     if len(tokens) == 3 and tokens[:2] == ["signal", "inspect"]:
         return SignalInspectCommand(signal_id=tokens[2])
     if len(tokens) in {3, 4} and tokens[:2] == ["signal", "inject"]:

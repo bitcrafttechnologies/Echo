@@ -15,6 +15,7 @@ from typing import Any
 from uuid import uuid4
 
 from echo.config import ConfigurationError, DEFAULT_CONFIG_PATH, EchoConfig, load_config
+from echo.continuity import ConversationState
 from echo.config_reload import RuntimeConfigurationManager
 from echo.core.entity import Entity
 from echo.core.runtime import Runtime
@@ -22,7 +23,14 @@ from echo.core.signal import Signal
 from echo.entity.context import CharacterContextBuilder, CharacterContextRequest
 from echo.entity.config import EntitySeedError, load_entity_seed
 from echo.entity.memory import WorkingMemory
-from echo.entity.memory_store import MemoryService, user_statement_candidates
+from echo.entity.memory_store import (
+    DurableMemoryType,
+    MemoryCandidate,
+    MemoryCommitAction,
+    MemoryService,
+    MemorySourceType,
+    user_statement_candidates,
+)
 from echo.providers import InferenceRequest, ProviderRouter
 from echo.restart import GracefulRestartCoordinator, RestartTarget
 from echo.runtime_service import RuntimeService
@@ -105,6 +113,7 @@ def register_user_message_handler(
     """Route Console chat Signals through inference and record the reply."""
 
     context_builder = CharacterContextBuilder()
+    conversation = ConversationState()
     conversation_focus = "conversation"
     last_medulla_invocations: list[dict[str, Any]] = []
 
@@ -120,6 +129,7 @@ def register_user_message_handler(
         environment = signal.metadata.get("environment", {})
         if not isinstance(environment, Mapping):
             environment = {}
+        dialogue_interpretation = conversation.interpretation(text.strip())
         character_context = context_builder.build(
             entity,
             CharacterContextRequest(
@@ -138,8 +148,23 @@ def register_user_message_handler(
                 text.strip(), conversation_focus
             )
             reuse_previous = _requests_raw_medulla_result(text.strip())
-            planned_actions = () if inventory_requested or reuse_previous else _medulla_actions_for_prompt(
-                text.strip(), signal.metadata, inventory=medulla_inventory
+            confirmed_action = conversation.confirmed_action(text.strip())
+            if confirmed_action is not None and not any(
+                item.get("name") == confirmed_action[0]
+                and item.get("available") is True
+                for item in medulla_inventory["capabilities"]
+            ):
+                confirmed_action = None
+            planned_actions = (
+                ()
+                if inventory_requested or reuse_previous
+                else (
+                    (confirmed_action,)
+                    if confirmed_action is not None
+                    else _medulla_actions_for_prompt(
+                        text.strip(), signal.metadata, inventory=medulla_inventory
+                    )
+                )
             )
             if reuse_previous:
                 medulla_invocations = [dict(item) for item in last_medulla_invocations]
@@ -186,6 +211,11 @@ def register_user_message_handler(
                     if entity.runtime is not None:
                         entity.runtime.fail_action(action.id, error)
             if planned_actions:
+                if confirmed_action is not None:
+                    referent = dialogue_interpretation.get("referent")
+                    if isinstance(referent, dict):
+                        referent["status"] = "completed"
+                    conversation.complete_pending()
                 last_medulla_invocations = [dict(item) for item in medulla_invocations]
                 conversation_focus = (
                     planned_actions[0][0]
@@ -199,6 +229,36 @@ def register_user_message_handler(
             else:
                 conversation_focus = "conversation"
         inference_context = character_context.to_dict()
+        immediate_messages = conversation.immediate_messages(text.strip())
+        interpretation = dialogue_interpretation
+        memory_trace = entity.memory_service.query_trace(
+            text.strip(), limit=CharacterContextRequest(situation=text.strip()).max_memories
+        )
+        inference_context["immediate_conversation"] = list(immediate_messages)
+        inference_context["dialogue_state"] = {
+            "interpretation": interpretation,
+            "pending_intent": (
+                conversation.pending_intent.to_dict()
+                if conversation.pending_intent is not None
+                else None
+            ),
+        }
+        initial_trace: dict[str, Any] = {
+            "immediate_turns_included": len(immediate_messages) // 2,
+            "memories_retrieved": [memory["id"] for memory in inference_context["memories"]],
+            "memory_candidates_created": [],
+            "memories_written": [],
+            "capabilities_exposed": [
+                item["name"] for item in (medulla_inventory or {}).get("capabilities", ())
+            ],
+            "capabilities_selected": [name for name, _parameters in planned_actions] if node_host is not None else [],
+            "action_results_returned": [
+                {"capability": item["capability"], "status": item["status"]}
+                for item in medulla_invocations
+            ],
+        }
+        inference_context["continuity_trace"] = initial_trace
+        inference_context["memory_retrieval_trace"] = memory_trace
         if medulla_inventory is not None:
             inference_context["medulla"] = {
                 "inventory": medulla_inventory,
@@ -230,6 +290,13 @@ def register_user_message_handler(
                     "model/background knowledge as a remembered personal experience. "
                     "If no direct-experience memory supports an event, say that the "
                     "Entity does not have that lived experience.\n\n"
+                    "Unknown-memory grounding: Not finding a memory means only that the "
+                    "information is currently unknown or unavailable. Never claim the user "
+                    "did not tell you, or that something never happened, unless positive "
+                    "historical evidence supports that claim.\n\n"
+                    "Dialogue continuity: immediate_conversation is the authoritative recent "
+                    "dialogue window. Resolve pronouns, short confirmations, and follow-ups "
+                    "against it and dialogue_state before asking for clarification.\n\n"
                     "Medulla grounding: The medulla.inventory object is the authoritative "
                     "live capability state. Distinguish registration, provider connection, "
                     "and invocation status. The medulla.invocations records are the only "
@@ -258,6 +325,7 @@ def register_user_message_handler(
         grounded_output = _ground_model_action_envelope(
             grounded_output, medulla_invocations
         )
+        grounded_output = _ground_unknown_memory_claims(grounded_output)
         if inventory_requested and medulla_inventory is not None:
             grounded_output = _render_medulla_inventory(medulla_inventory)
         elif reuse_previous:
@@ -275,6 +343,7 @@ def register_user_message_handler(
             provider=result.provider.to_dict(),
             timing=result.timing.to_dict(),
             medulla_invocations=medulla_invocations,
+            cognition_trace=initial_trace,
         )
         memory_metadata: dict[str, Any] = {
             "signal_id": signal.id,
@@ -293,15 +362,40 @@ def register_user_message_handler(
                 metadata=memory_metadata,
             )
         )
+        candidates = list(
+            user_statement_candidates(
+                text,
+                signal_id=signal.id,
+                action_id=action.id,
+                subject_id=subject_id,
+            )
+        )
+        if not _is_transient_telemetry_turn(text, medulla_invocations):
+            candidates.append(
+                _episodic_conversation_candidate(
+                    text.strip(), grounded_output, signal_id=signal.id,
+                    action_id=action.id, subject_id=subject_id
+                )
+            )
+        write_trace: list[dict[str, Any]] = []
         try:
             if entity.memory_service.durable:
-                for candidate in user_statement_candidates(
-                    text,
-                    signal_id=signal.id,
-                    action_id=action.id,
-                    subject_id=subject_id,
-                ):
-                    entity.commit_memory_candidate(candidate)
+                for candidate in candidates:
+                    decision = entity.commit_memory_candidate(
+                        candidate,
+                        trusted_provenance=(candidate.source_type is MemorySourceType.DIRECT_EXPERIENCE),
+                    )
+                    write_trace.append(
+                        {
+                            "candidate_id": candidate.id,
+                            "canonical_key": candidate.canonical_key,
+                            "classification": candidate.memory_type.value,
+                            "source_type": candidate.source_type.value,
+                            "decision": decision.action.value,
+                            "reason": decision.reason,
+                            "record_id": decision.record.id if decision.record else None,
+                        }
+                    )
         except Exception as error:
             logger.error(
                 "durable memory commit failed",
@@ -316,7 +410,75 @@ def register_user_message_handler(
                     signal_id=signal.id,
                     action_id=action.id,
                 )
+        final_trace = {
+            **initial_trace,
+            "memory_candidates_created": [
+                {
+                    "id": candidate.id,
+                    "classification": candidate.memory_type.value,
+                    "canonical_key": candidate.canonical_key,
+                    "source_type": candidate.source_type.value,
+                }
+                for candidate in candidates
+            ],
+            "memories_written": [
+                item for item in write_trace if item["decision"] in {
+                    MemoryCommitAction.COMMITTED.value,
+                    MemoryCommitAction.MERGED.value,
+                }
+            ],
+            "memory_write_decisions": write_trace,
+        }
+        action.parameters["cognition_trace"] = final_trace
+        conversation.add_turn(text.strip(), grounded_output)
+        conversation.detect_pending_offer(grounded_output, medulla_inventory)
+        logger.info(
+            "cognition turn completed",
+            extra={"entity_id": entity.id, "signal_id": signal.id, "cognition_trace": final_trace},
+        )
         return action
+
+
+def _episodic_conversation_candidate(
+    user_text: str,
+    assistant_text: str,
+    *,
+    signal_id: str,
+    action_id: str,
+    subject_id: str | None,
+) -> MemoryCandidate:
+    compact_user = user_text[:500]
+    compact_assistant = assistant_text[:220]
+    return MemoryCandidate(
+        content=f"Conversation: user said {compact_user!r}; Echo replied {compact_assistant!r}",
+        memory_type=DurableMemoryType.EPISODIC,
+        source_type=MemorySourceType.DIRECT_EXPERIENCE,
+        source_refs=(f"signal:{signal_id}", f"action:{action_id}"),
+        confidence=1.0,
+        importance=0.45,
+        canonical_key=f"conversation.{signal_id}",
+        subject_id=subject_id,
+    )
+
+
+def _is_transient_telemetry_turn(
+    text: str, invocations: list[dict[str, Any]]
+) -> bool:
+    transient_capabilities = {
+        "battery.status",
+        "system.health",
+        "system.datetime",
+        "location.current",
+    }
+    if any(item.get("capability") in transient_capabilities for item in invocations):
+        return True
+    return bool(
+        re.search(
+            r"\b(?:battery|cpu|memory|temperature|signal|bluetooth)\b\s*(?:=|is|at)\s*\d+(?:\.\d+)?%?",
+            text,
+            re.I,
+        )
+    )
 
 
 def _medulla_actions_for_prompt(
@@ -598,6 +760,20 @@ def _ground_external_action_claims(
         + " completed, so I can't truthfully report that it did."
         + suffix
     )
+
+
+def _ground_unknown_memory_claims(output: str) -> str:
+    """Prevent retrieval uncertainty from becoming an unsupported history claim."""
+
+    unsupported = re.compile(
+        r"\b(?:you (?:have not|haven['’]t|never) (?:told|mentioned|said)|"
+        r"we(?: have|'ve)? never (?:discussed|talked about))\b[^.!?]*[.!?]?",
+        re.I,
+    )
+    if not unsupported.search(output):
+        return output
+    grounded = unsupported.sub("I don't currently have that information stored.", output)
+    return re.sub(r"\s{2,}", " ", grounded).strip()
 
 
 def _clone_entity_generation(entity: Entity) -> Entity:
