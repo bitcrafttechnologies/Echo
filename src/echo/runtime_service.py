@@ -469,6 +469,10 @@ class RuntimeServiceProtocol(Protocol):
         self, entity_id: str, memory_id: str
     ) -> DurableMemoryRecord: ...
 
+    def trace_memory_query(
+        self, entity_id: str, query: str, *, limit: int | None = None
+    ) -> dict[str, Any]: ...
+
     def archive_durable_memory(
         self, entity_id: str, memory_id: str
     ) -> DurableMemoryRecord: ...
@@ -1247,6 +1251,15 @@ class RuntimeService:
                 details={"entity_id": entity_id, "memory_id": memory_id},
             )
         return record
+
+    def trace_memory_query(
+        self, entity_id: str, query: str, *, limit: int | None = None
+    ) -> dict[str, Any]:
+        self._validate_identifier(query, "query")
+        _validate_limit(limit)
+        return self._require_entity(entity_id).memory_service.query_trace(
+            query, limit=limit
+        )
 
     def archive_durable_memory(
         self, entity_id: str, memory_id: str

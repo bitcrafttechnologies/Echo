@@ -12,11 +12,17 @@ from uuid import uuid4
 
 
 class DurableMemoryType(StrEnum):
+    EPISODIC = "episodic"
     SEMANTIC = "semantic"
     CHARACTER = "character"
 
 
 class MemorySourceType(StrEnum):
+    USER_EXPLICIT = "user_explicit"
+    OBSERVED = "observed"
+    INFERRED = "inferred"
+    SYSTEM_CONFIGURED = "system_configured"
+    # Legacy provenance values remain readable for existing databases.
     USER_STATEMENT = "user_statement"
     DIRECT_EXPERIENCE = "direct_experience"
     INFERENCE = "inference"
@@ -305,7 +311,8 @@ _CORRECTION = re.compile(
     re.I,
 )
 _FILLER = re.compile(
-    r"^(?:haha|lol|ok(?:ay)?|sounds good|thanks|thank you|that was helpful)\b",
+    r"^(?:haha|lol|yes|yeah|yep|sure|ok(?:ay)?|go ahead|go for it|do it|"
+    r"sounds good|thanks|thank you|that was helpful)\b",
     re.I,
 )
 _STOP = frozenset(
@@ -448,7 +455,12 @@ class MemoryService:
             )
         record = DurableMemoryRecord(
             id=str(uuid4()), entity_id=self.entity_id, memory_type=candidate.memory_type,
-            content=candidate.content, canonical_key=candidate.canonical_key,
+            content=candidate.content,
+            canonical_key=(
+                superseded[0].canonical_key
+                if superseded and _CORRECTION.search(candidate.content)
+                else candidate.canonical_key
+            ),
             source_type=candidate.source_type, source_refs=candidate.source_refs,
             confidence=float(candidate.confidence), importance=float(candidate.importance),
             subject_id=candidate.subject_id,
@@ -485,9 +497,12 @@ class MemoryService:
             memory_type=memory_type,
         )
         ranked = sorted(
-            records,
+            (
+                record for record in records
+                if self._relevance(record, situation, terms) > 0
+            ),
             key=lambda record: (
-                -len(terms & set(_tokens(record.content))),
+                -self._relevance(record, situation, terms),
                 -record.importance,
                 -record.updated_at.timestamp(),
                 record.id,
@@ -500,6 +515,84 @@ class MemoryService:
                 _now(),
             )
         return tuple(ranked)
+
+    def query_trace(
+        self,
+        situation: str,
+        *,
+        limit: int | None = None,
+        memory_type: DurableMemoryType | str | None = None,
+    ) -> dict[str, Any]:
+        """Explain retrieval data and scores without exposing model reasoning."""
+
+        if limit is not None and (
+            isinstance(limit, bool) or not isinstance(limit, int) or limit < 0
+        ):
+            raise ValueError("memory query limit must be a non-negative integer")
+        requested = self.max_results if limit is None else min(limit, self.max_results)
+        terms = set(_tokens(situation))
+        records = self.repository.list_for_entity(
+            self.entity_id,
+            status=DurableMemoryStatus.ACTIVE,
+            memory_type=memory_type,
+        )
+        scored = [
+            (record, self._relevance(record, situation, terms)) for record in records
+        ]
+        scored.sort(
+            key=lambda item: (
+                -item[1], -item[0].importance, -item[0].updated_at.timestamp(), item[0].id
+            )
+        )
+        selected = [item for item in scored if item[1] > 0][:requested]
+        return {
+            "query": situation,
+            "candidates": [
+                {
+                    "id": record.id,
+                    "memory_type": record.memory_type.value,
+                    "canonical_key": record.canonical_key,
+                    "content": record.content,
+                    "score": score,
+                    "confidence": record.confidence,
+                    "importance": record.importance,
+                    "source_type": record.source_type.value,
+                    "selected": any(record.id == chosen.id for chosen, _ in selected),
+                }
+                for record, score in scored
+            ],
+            "selected": [record.id for record, _score in selected],
+            "context_injection": [record.to_dict() for record, _score in selected],
+        }
+
+    @staticmethod
+    def _relevance(
+        record: DurableMemoryRecord, situation: str, terms: set[str]
+    ) -> int:
+        record_terms = set(_tokens(f"{record.canonical_key} {record.content}"))
+        score = len(terms & record_terms) * 10
+        lowered = situation.casefold()
+        if re.search(r"\b(?:my|me|i)\b.*\bname\b|\bname\b.*\b(?:my|me)\b", lowered):
+            if record.canonical_key == "user.preferred_name":
+                score += 1000
+        if re.search(r"\b(?:recently|yesterday|last time|talking about|discussed)\b", lowered):
+            if record.memory_type is DurableMemoryType.EPISODIC:
+                score += 200
+        if re.search(r"\bwho are you\b|\byour identity\b", lowered):
+            if record.memory_type is DurableMemoryType.CHARACTER:
+                score += 200
+        if re.search(r"\b(?:capable|capability|capabilities|can you do)\b", lowered):
+            if record.canonical_key.startswith("semantic:capability."):
+                score += 200
+        if score > 0:
+            if record.source_type is MemorySourceType.USER_EXPLICIT:
+                score += 30
+            elif record.source_type in {
+                MemorySourceType.OBSERVED,
+                MemorySourceType.DIRECT_EXPERIENCE,
+            }:
+                score += 15
+        return score
 
     def list(
         self,
@@ -533,7 +626,7 @@ def user_statement_candidates(
     """Conservatively extract concise declarative evidence without an LLM."""
 
     normalized = normalize_memory_text(text)
-    if len(normalized) < 12 or normalized.endswith("?") or _FILLER.match(normalized):
+    if len(normalized) < 4 or normalized.endswith("?") or _FILLER.match(normalized):
         return ()
     sentences = [
         part.strip(" .")
@@ -546,6 +639,57 @@ def user_statement_candidates(
         lowered = sentence.lower().replace("’", "'")
         if lowered.startswith("my neighborhood"):
             prior_subject = "neighborhood"
+        if re.search(
+            r"\b(?:battery|cpu|memory|temperature|signal|bluetooth)\b\s*(?:=|is|at)\s*\d+(?:\.\d+)?%?",
+            lowered,
+        ):
+            continue
+        attribute_match = re.fullmatch(
+            r"my\s+([a-z][a-z _-]{0,40})\s+is\s+(.+)", sentence, re.I
+        )
+        name_match = re.fullmatch(
+            r"(?:call me|i prefer to be called)\s+(.+)", sentence, re.I
+        )
+        preference_match = re.fullmatch(r"i prefer\s+(.+)", sentence, re.I)
+        if attribute_match or name_match or preference_match:
+            if attribute_match:
+                attribute = attribute_match.group(1).strip().lower().replace(" ", "_")
+                value = attribute_match.group(2).strip(" .")
+                if attribute == "name":
+                    attribute = "preferred_name"
+                content = f"The user's {attribute.replace('_', ' ')} is {value}"
+                key = f"user.{attribute}"
+            elif name_match:
+                value = name_match.group(1).strip(" .")
+                content = f"The user's preferred name is {value}"
+                key = "user.preferred_name"
+            else:
+                assert preference_match is not None
+                value = preference_match.group(1).strip(" .")
+                value_terms = _tokens(value)
+                if len(value_terms) == 1 and value[:1].isupper():
+                    content = f"The user's preferred name is {value}"
+                    key = "user.preferred_name"
+                else:
+                    content = f"The user prefers {value}"
+                    key = "user.preference." + ".".join(value_terms[:3] or ("general",))
+            if value:
+                refs = (f"signal:{signal_id}",) + (
+                    (f"action:{action_id}",) if action_id is not None else ()
+                )
+                candidates.append(
+                    MemoryCandidate(
+                        content=content,
+                        memory_type=DurableMemoryType.SEMANTIC,
+                        source_type=MemorySourceType.USER_EXPLICIT,
+                        source_refs=refs,
+                        confidence=0.99,
+                        importance=0.9,
+                        canonical_key=key,
+                        subject_id=subject_id,
+                    )
+                )
+                continue
         statements = [sentence]
         list_match = re.match(r"(?:it|my neighborhood) (?:has|contains) (.+)", sentence, re.I)
         if list_match and (
@@ -591,7 +735,7 @@ def user_statement_candidates(
                 MemoryCandidate(
                     content=statement,
                     memory_type=DurableMemoryType.SEMANTIC,
-                    source_type=MemorySourceType.USER_STATEMENT,
+                    source_type=MemorySourceType.USER_EXPLICIT,
                     source_refs=refs,
                     confidence=0.85,
                     importance=0.65,
